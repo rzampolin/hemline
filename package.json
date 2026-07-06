@@ -1,0 +1,42 @@
+{
+  "name": "hemline",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Personal dress-shopping assistant — finds dresses that fit your style, color season, size, and actual hem position for your height.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @hemline/web",
+    "build": "npm run build -w @hemline/web",
+    "start": "npm run start -w @hemline/web",
+    "ingest": "tsx apps/ingest/src/run.ts",
+    "ingest:watch": "tsx apps/ingest/src/schedule.ts",
+    "db:migrate": "mkdir -p data && drizzle-kit push",
+    "db:seed": "tsx packages/db/src/seed.ts",
+    "db:studio": "drizzle-kit studio",
+    "seed": "npm run db:migrate && npm run db:seed",
+    "test": "vitest run",
+    "test:e2e": "echo 'test:e2e — not yet implemented (frontend-eng: Playwright specs live in e2e/)'",
+    "test:live": "echo 'test:live — not yet implemented (ai-eng: live API smoke tests, skipped without ANTHROPIC_API_KEY)'",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.20.0",
+    "@types/node": "^24.0.0",
+    "drizzle-kit": "^0.31.0",
+    "eslint": "^9.20.0",
+    "prettier": "^3.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.24.0",
+    "vitest": "^3.0.0"
+  }
+}
