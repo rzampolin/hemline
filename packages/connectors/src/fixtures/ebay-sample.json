@@ -1,0 +1,1315 @@
+{
+  "href": "https://api.ebay.com/buy/browse/v1/item_summary/search?q=dress&category_ids=63861&limit=50&offset=0",
+  "total": 20,
+  "limit": 50,
+  "offset": 0,
+  "itemSummaries": [
+    {
+      "itemId": "v1|221262846182|0",
+      "title": "ModCloth Plum polka dot sheath Short Dress Sz 4 viscose",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=ModCloth+Plum+Dress"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://placehold.co/600x800?text=ModCloth+Plum+Dress+2"
+        }
+      ],
+      "price": {
+        "value": "87.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C221262846182%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/221262846182",
+      "seller": {
+        "username": "closet_curator_100",
+        "feedbackPercentage": "99.3",
+        "feedbackScore": 2798
+      },
+      "condition": "New with tags",
+      "conditionId": "1000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "450**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "4"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "plum"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "ModCloth"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Short"
+        }
+      ],
+      "legacyItemId": "221262846182"
+    },
+    {
+      "itemId": "v1|275349828839|0",
+      "title": "VTG 1990s Gunne Sax Leopard polka dot trapeze Mini Dress Sz L linen",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Gunne+Sax+Leopard+Dress"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://placehold.co/600x800?text=Gunne+Sax+Leopard+Dress+2"
+        },
+        {
+          "imageUrl": "https://placehold.co/600x800?text=Gunne+Sax+Leopard+Dress+3"
+        }
+      ],
+      "price": {
+        "value": "202.99",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C275349828839%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/275349828839",
+      "seller": {
+        "username": "closet_curator_101",
+        "feedbackPercentage": "98.2",
+        "feedbackScore": 4587
+      },
+      "condition": "Pre-owned",
+      "conditionId": "3000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "870**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "L"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "leopard"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "Gunne Sax"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Mini"
+        },
+        {
+          "type": "STRING",
+          "name": "Decade",
+          "value": "1990s"
+        }
+      ],
+      "legacyItemId": "275349828839"
+    },
+    {
+      "itemId": "v1|269145167879|0",
+      "title": "VTG 1990s Norma Kamali Leopard ditsy floral wrap Short Dress Sz L jersey",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Norma+Kamali+Leopard+Dress"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://placehold.co/600x800?text=Norma+Kamali+Leopard+Dress+2"
+        }
+      ],
+      "price": {
+        "value": "256.99",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C269145167879%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/269145167879",
+      "seller": {
+        "username": "closet_curator_102",
+        "feedbackPercentage": "98.6",
+        "feedbackScore": 640
+      },
+      "condition": "Pre-owned - Good",
+      "conditionId": "3000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "850**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "L"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "leopard"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "Norma Kamali"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Short"
+        },
+        {
+          "type": "STRING",
+          "name": "Decade",
+          "value": "1990s"
+        }
+      ],
+      "legacyItemId": "269145167879"
+    },
+    {
+      "itemId": "v1|247503528774|0",
+      "title": "Reformation Burnt Orange trapeze Midi Dress Sz 8 crepe",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Reformation+Burnt+Orange+Dress"
+      },
+      "additionalImages": [],
+      "price": {
+        "value": "160.99",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C247503528774%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/247503528774",
+      "seller": {
+        "username": "closet_curator_103",
+        "feedbackPercentage": "96.3",
+        "feedbackScore": 3554
+      },
+      "condition": "Pre-owned - Excellent",
+      "conditionId": "3000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "390**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "8"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "burnt orange"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "Reformation"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Midi"
+        }
+      ],
+      "legacyItemId": "247503528774"
+    },
+    {
+      "itemId": "v1|271436967436|0",
+      "title": "ModCloth Charcoal floral wrap Mini Dress Sz M cotton",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=ModCloth+Charcoal+Dress"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://placehold.co/600x800?text=ModCloth+Charcoal+Dress+2"
+        }
+      ],
+      "price": {
+        "value": "73.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C271436967436%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/271436967436",
+      "seller": {
+        "username": "closet_curator_104",
+        "feedbackPercentage": "97.1",
+        "feedbackScore": 1382
+      },
+      "condition": "Pre-owned - Excellent",
+      "conditionId": "3000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "600**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "M"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "charcoal"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "ModCloth"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Mini"
+        }
+      ],
+      "legacyItemId": "271436967436"
+    },
+    {
+      "itemId": "v1|203661353515|0",
+      "title": "VTG 1970s Betsey Johnson Hot Pink slip Midi Dress Sz 14",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Betsey+Johnson+Hot+Pink+Dress"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://placehold.co/600x800?text=Betsey+Johnson+Hot+Pink+Dress+2"
+        }
+      ],
+      "price": {
+        "value": "64.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C203661353515%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/203661353515",
+      "seller": {
+        "username": "closet_curator_105",
+        "feedbackPercentage": "97.3",
+        "feedbackScore": 3861
+      },
+      "condition": "Pre-owned - Fair",
+      "conditionId": "3000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "250**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "14"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "hot pink"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "Betsey Johnson"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Midi"
+        },
+        {
+          "type": "STRING",
+          "name": "Decade",
+          "value": "1970s"
+        }
+      ],
+      "legacyItemId": "203661353515"
+    },
+    {
+      "itemId": "v1|247921421708|0",
+      "title": "VTG 1980s Laura Ashley Rust ditsy floral empire-waist Dress Sz M cotton",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Laura+Ashley+Rust+Dress"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://placehold.co/600x800?text=Laura+Ashley+Rust+Dress+2"
+        }
+      ],
+      "price": {
+        "value": "241.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C247921421708%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/247921421708",
+      "seller": {
+        "username": "closet_curator_106",
+        "feedbackPercentage": "99.9",
+        "feedbackScore": 2187
+      },
+      "condition": "Pre-owned - Good",
+      "conditionId": "3000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "190**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "M"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "rust"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "Laura Ashley"
+        },
+        {
+          "type": "STRING",
+          "name": "Decade",
+          "value": "1980s"
+        }
+      ],
+      "legacyItemId": "247921421708"
+    },
+    {
+      "itemId": "v1|242763440736|0",
+      "title": "VTG 1980s Gunne Sax Ivory relaxed Mini Dress Sz 10",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Gunne+Sax+Ivory+Dress"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://placehold.co/600x800?text=Gunne+Sax+Ivory+Dress+2"
+        },
+        {
+          "imageUrl": "https://placehold.co/600x800?text=Gunne+Sax+Ivory+Dress+3"
+        }
+      ],
+      "price": {
+        "value": "109.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C242763440736%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/242763440736",
+      "seller": {
+        "username": "closet_curator_107",
+        "feedbackPercentage": "97.7",
+        "feedbackScore": 661
+      },
+      "condition": "Pre-owned - Good",
+      "conditionId": "3000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "670**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "10"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "ivory"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "Gunne Sax"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Mini"
+        },
+        {
+          "type": "STRING",
+          "name": "Decade",
+          "value": "1980s"
+        }
+      ],
+      "legacyItemId": "242763440736"
+    },
+    {
+      "itemId": "v1|235105296726|0",
+      "title": "Lilly Pulitzer Forest Green plaid fit-and-flare Midi Dress Sz 10 rayon",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Lilly+Pulitzer+Forest+Green+Dress"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://placehold.co/600x800?text=Lilly+Pulitzer+Forest+Green+Dress+2"
+        }
+      ],
+      "price": {
+        "value": "28.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C235105296726%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/235105296726",
+      "seller": {
+        "username": "closet_curator_108",
+        "feedbackPercentage": "98.1",
+        "feedbackScore": 4014
+      },
+      "condition": "Pre-owned",
+      "conditionId": "3000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "580**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "10"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "forest green"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "Lilly Pulitzer"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Midi"
+        }
+      ],
+      "legacyItemId": "235105296726"
+    },
+    {
+      "itemId": "v1|295675144683|0",
+      "title": "Jessica McClintock Cream abstract fit-and-flare Knee Length Dress Sz 8 silk",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Jessica+McClintock+Cream+Dress"
+      },
+      "additionalImages": [],
+      "price": {
+        "value": "95.99",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C295675144683%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/295675144683",
+      "seller": {
+        "username": "closet_curator_109",
+        "feedbackPercentage": "98.5",
+        "feedbackScore": 2929
+      },
+      "condition": "New with tags",
+      "conditionId": "1000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "320**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "8"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "cream"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "Jessica McClintock"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Knee Length"
+        }
+      ],
+      "legacyItemId": "295675144683"
+    },
+    {
+      "itemId": "v1|242483324445|0",
+      "title": "VTG 1990s Handmade Sage animal sheath Short Dress Sz 8 cotton",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Vintage+Sage+Dress"
+      },
+      "additionalImages": [],
+      "price": {
+        "value": "157.99",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C242483324445%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/242483324445",
+      "seller": {
+        "username": "closet_curator_110",
+        "feedbackPercentage": "98.7",
+        "feedbackScore": 1016
+      },
+      "condition": "Pre-owned - Good",
+      "conditionId": "3000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "680**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "8"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "sage"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Short"
+        },
+        {
+          "type": "STRING",
+          "name": "Decade",
+          "value": "1990s"
+        }
+      ],
+      "legacyItemId": "242483324445"
+    },
+    {
+      "itemId": "v1|290517474982|0",
+      "title": "VTG Y2K Jessica McClintock Lilac abstract fit-and-flare Midi Dress Sz 10 cotton",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Jessica+McClintock+Lilac+Dress"
+      },
+      "additionalImages": [],
+      "price": {
+        "value": "71.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C290517474982%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/290517474982",
+      "seller": {
+        "username": "closet_curator_111",
+        "feedbackPercentage": "99.3",
+        "feedbackScore": 3739
+      },
+      "condition": "Pre-owned - Good",
+      "conditionId": "3000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "930**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "10"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "lilac"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "Jessica McClintock"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Midi"
+        },
+        {
+          "type": "STRING",
+          "name": "Decade",
+          "value": "Y2K"
+        }
+      ],
+      "legacyItemId": "290517474982"
+    },
+    {
+      "itemId": "v1|248160349709|0",
+      "title": "Anthropologie Cherry Red wrap Maxi Dress Sz 4 polyester",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Anthropologie+Cherry+Red+Dress"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://placehold.co/600x800?text=Anthropologie+Cherry+Red+Dress+2"
+        }
+      ],
+      "price": {
+        "value": "22.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C248160349709%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/248160349709",
+      "seller": {
+        "username": "closet_curator_112",
+        "feedbackPercentage": "98.4",
+        "feedbackScore": 2468
+      },
+      "condition": "Pre-owned - Good",
+      "conditionId": "3000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "360**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "4"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "cherry red"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "Anthropologie"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Maxi"
+        }
+      ],
+      "legacyItemId": "248160349709"
+    },
+    {
+      "itemId": "v1|206878149403|0",
+      "title": "VTG 1990s Gunne Sax Dusty Rose plaid empire-waist Maxi Dress Sz L satin",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Gunne+Sax+Dusty+Rose+Dress"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://placehold.co/600x800?text=Gunne+Sax+Dusty+Rose+Dress+2"
+        },
+        {
+          "imageUrl": "https://placehold.co/600x800?text=Gunne+Sax+Dusty+Rose+Dress+3"
+        }
+      ],
+      "price": {
+        "value": "43.99",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C206878149403%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/206878149403",
+      "seller": {
+        "username": "closet_curator_113",
+        "feedbackPercentage": "97.5",
+        "feedbackScore": 1287
+      },
+      "condition": "Pre-owned - Fair",
+      "conditionId": "3000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "360**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "L"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "dusty rose"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "Gunne Sax"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Maxi"
+        },
+        {
+          "type": "STRING",
+          "name": "Decade",
+          "value": "1990s"
+        }
+      ],
+      "legacyItemId": "206878149403"
+    },
+    {
+      "itemId": "v1|254399198908|0",
+      "title": "VTG Y2K Handmade Gold A-line Full Length Dress Sz 4 taffeta",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Vintage+Gold+Dress"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://placehold.co/600x800?text=Vintage+Gold+Dress+2"
+        },
+        {
+          "imageUrl": "https://placehold.co/600x800?text=Vintage+Gold+Dress+3"
+        }
+      ],
+      "price": {
+        "value": "210.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C254399198908%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/254399198908",
+      "seller": {
+        "username": "closet_curator_114",
+        "feedbackPercentage": "98.6",
+        "feedbackScore": 2848
+      },
+      "condition": "Pre-owned - Excellent",
+      "conditionId": "3000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "480**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "4"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "gold"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Long"
+        },
+        {
+          "type": "STRING",
+          "name": "Decade",
+          "value": "Y2K"
+        }
+      ],
+      "legacyItemId": "254399198908"
+    },
+    {
+      "itemId": "v1|227705419976|0",
+      "title": "VTG 1990s Betsey Johnson Gold paisley bodycon Knee Length Dress Sz 8 cotton",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Betsey+Johnson+Gold+Dress"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://placehold.co/600x800?text=Betsey+Johnson+Gold+Dress+2"
+        }
+      ],
+      "price": {
+        "value": "58.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C227705419976%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/227705419976",
+      "seller": {
+        "username": "closet_curator_115",
+        "feedbackPercentage": "99.6",
+        "feedbackScore": 2239
+      },
+      "condition": "Pre-owned",
+      "conditionId": "3000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "300**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "8"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "gold"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "Betsey Johnson"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Knee Length"
+        },
+        {
+          "type": "STRING",
+          "name": "Decade",
+          "value": "1990s"
+        }
+      ],
+      "legacyItemId": "227705419976"
+    },
+    {
+      "itemId": "v1|200375878377|0",
+      "title": "VTG 1970s Diane von Furstenberg Plum paisley slip Midi Dress Sz 8 satin",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Diane+von+Furstenberg+Plum+Dress"
+      },
+      "additionalImages": [
+        {
+          "imageUrl": "https://placehold.co/600x800?text=Diane+von+Furstenberg+Plum+Dress+2"
+        },
+        {
+          "imageUrl": "https://placehold.co/600x800?text=Diane+von+Furstenberg+Plum+Dress+3"
+        }
+      ],
+      "price": {
+        "value": "31.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C200375878377%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/200375878377",
+      "seller": {
+        "username": "closet_curator_116",
+        "feedbackPercentage": "96.0",
+        "feedbackScore": 3860
+      },
+      "condition": "Pre-owned - Good",
+      "conditionId": "3000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "120**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "8"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "plum"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "Diane von Furstenberg"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Midi"
+        },
+        {
+          "type": "STRING",
+          "name": "Decade",
+          "value": "1970s"
+        }
+      ],
+      "legacyItemId": "200375878377"
+    },
+    {
+      "itemId": "v1|278722278615|0",
+      "title": "VTG 1970s Gunne Sax Emerald empire-waist Dress Sz M",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Gunne+Sax+Emerald+Dress"
+      },
+      "additionalImages": [],
+      "price": {
+        "value": "60.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C278722278615%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/278722278615",
+      "seller": {
+        "username": "closet_curator_117",
+        "feedbackPercentage": "98.6",
+        "feedbackScore": 2573
+      },
+      "condition": "Pre-owned - Good",
+      "conditionId": "3000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "100**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "M"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "emerald"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "Gunne Sax"
+        },
+        {
+          "type": "STRING",
+          "name": "Decade",
+          "value": "1970s"
+        }
+      ],
+      "legacyItemId": "278722278615"
+    },
+    {
+      "itemId": "v1|244084812074|0",
+      "title": "Escada Ivory relaxed Knee Length Dress Sz 10 lace",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Escada+Ivory+Dress"
+      },
+      "additionalImages": [],
+      "price": {
+        "value": "273.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C244084812074%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/244084812074",
+      "seller": {
+        "username": "closet_curator_118",
+        "feedbackPercentage": "98.7",
+        "feedbackScore": 1692
+      },
+      "condition": "Pre-owned - Excellent",
+      "conditionId": "3000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "630**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "10"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "ivory"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "Escada"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Knee Length"
+        }
+      ],
+      "legacyItemId": "244084812074"
+    },
+    {
+      "itemId": "v1|284841384293|0",
+      "title": "Lilly Pulitzer Emerald stripe empire-waist Knee Length Dress Sz L silk",
+      "leafCategoryIds": [
+        "63861"
+      ],
+      "categories": [
+        {
+          "categoryId": "63861",
+          "categoryName": "Dresses"
+        }
+      ],
+      "image": {
+        "imageUrl": "https://placehold.co/600x800?text=Lilly+Pulitzer+Emerald+Dress"
+      },
+      "additionalImages": [],
+      "price": {
+        "value": "40.00",
+        "currency": "USD"
+      },
+      "itemHref": "https://api.ebay.com/buy/browse/v1/item/v1%7C284841384293%7C0",
+      "itemWebUrl": "https://www.ebay.com/itm/284841384293",
+      "seller": {
+        "username": "closet_curator_119",
+        "feedbackPercentage": "97.7",
+        "feedbackScore": 4494
+      },
+      "condition": "New with tags",
+      "conditionId": "1000",
+      "buyingOptions": [
+        "FIXED_PRICE"
+      ],
+      "itemLocation": {
+        "postalCode": "100**",
+        "country": "US"
+      },
+      "localizedAspects": [
+        {
+          "type": "STRING",
+          "name": "Size",
+          "value": "L"
+        },
+        {
+          "type": "STRING",
+          "name": "Color",
+          "value": "emerald"
+        },
+        {
+          "type": "STRING",
+          "name": "Brand",
+          "value": "Lilly Pulitzer"
+        },
+        {
+          "type": "STRING",
+          "name": "Dress Length",
+          "value": "Knee Length"
+        }
+      ],
+      "legacyItemId": "284841384293"
+    }
+  ]
+}
