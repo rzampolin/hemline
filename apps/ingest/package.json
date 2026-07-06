@@ -1,0 +1,15 @@
+{
+  "name": "@hemline/ingest",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@hemline/connectors": "*",
+    "@hemline/contracts": "*",
+    "@hemline/db": "*"
+  }
+}
