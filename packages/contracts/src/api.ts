@@ -46,11 +46,18 @@ export const ListingDetailResponseSchema = z.object({
   listing: ListingSchema,
   hem: HemResultSchema,
   similar: z.array(ListingSchema),
+  /**
+   * Optional (additive): server-composed "why it works for you" one-liner
+   * (templated keyless, Haiku when live). Absent for guests / mock layers
+   * that don't compute it.
+   */
+  whyItWorks: z.string().nullable().optional(),
 });
 export type ListingDetailResponse = {
   listing: Listing;
   hem: z.infer<typeof HemResultSchema>;
   similar: Listing[];
+  whyItWorks?: string | null;
 };
 
 // ── POST /api/color-analysis/quiz ─────────────────────────────────────────

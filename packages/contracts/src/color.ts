@@ -40,5 +40,11 @@ export const ColorAnalysisResultSchema = z.object({
   measured: MeasuredColorsSchema,
   /** set when sampleQuality='poor' or deep/olive skin ranges → suggest quiz */
   caveat: z.string().nullable(),
+  /**
+   * Optional (additive): how the result was produced. 'quiz' results carry
+   * SYNTHESIZED `measured` values (no selfie was sampled) — label them so the
+   * UI can say so.
+   */
+  source: z.enum(['selfie', 'quiz']).optional(),
 });
 export type ColorAnalysisResult = z.infer<typeof ColorAnalysisResultSchema>;

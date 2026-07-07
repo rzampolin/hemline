@@ -26,6 +26,12 @@ export const HardFiltersSchema = z.object({
   conditions: z.array(ConditionSchema).optional(),
   brands: z.array(z.string()).optional(),
   colorFamilies: z.array(z.string()).optional(),
+  /**
+   * Source facet (additive, 2026-07-06 integration): source ids
+   * ('fixture:ebay', 'shopify:staud.clothing', …) or the kind aliases
+   * 'resale' | 'brand', which the backend expands (spec B3 source filter).
+   */
+  sources: z.array(z.string()).optional(),
   /** free-text (FTS over title/brand/desc) */
   query: z.string().optional(),
 });
@@ -61,6 +67,12 @@ export const RankedListingSchema = z.object({
   whyItWorks: z.string().nullable(),
   /** 0..1 multiplier applied */
   freshnessDecay: z.number(),
+  /**
+   * Optional (additive): true when any listing color sits in the user's
+   * saved palette — the backend computes it so the "in your palette" chip
+   * needs no client-side color math.
+   */
+  paletteMatch: z.boolean().optional(),
 });
 export type RankedListing = z.infer<typeof RankedListingSchema>;
 
