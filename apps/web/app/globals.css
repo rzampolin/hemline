@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 
+/* Tailwind v4 scans from the app's cwd — the shared UI kit lives outside it. */
+@source '../../../packages/ui/src';
+
 /* Hemline editorial theme — warm neutrals/cream, near-black ink, bordeaux accent. */
 @theme {
   --color-cream: #faf6ef;

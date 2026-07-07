@@ -3,6 +3,7 @@
  * HemBadge: compact line on every card. Solid = measured, outline = estimated.
  * HemIndicator: detail-page vertical body diagram with the hem line marked.
  */
+import type { HTMLAttributes } from 'react';
 import type { HemResult, HemPosition, LengthClass } from '@hemline/contracts';
 import { cn } from './cn';
 
@@ -63,15 +64,22 @@ export function hemDetailLine(hem: HemResult, lengthClass: LengthClass | null): 
  * The non-negotiable per-card hem line. Never blank:
  * measured → solid ink pill · estimated → outlined pill · unknown → muted "Length unverified".
  */
-export function HemBadge({ hem, className }: { hem: HemResult; className?: string }) {
+export function HemBadge({
+  hem,
+  invert = false,
+  className,
+  ...rest
+}: { hem: HemResult; invert?: boolean; className?: string } & HTMLAttributes<HTMLSpanElement>) {
   const measured = hem.basis === 'measured_length';
   if (!hem.position) {
     return (
       <span
         className={cn(
-          'inline-flex items-center gap-1 text-[11px] text-ink-faint italic',
+          'inline-flex items-center gap-1 text-[11px] italic',
+          invert ? 'text-cream/80' : 'text-ink-faint',
           className,
         )}
+        {...rest}
       >
         Length unverified
       </span>
@@ -79,11 +87,16 @@ export function HemBadge({ hem, className }: { hem: HemResult; className?: strin
   }
   return (
     <span
+      {...rest}
       className={cn(
         'inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
         measured
-          ? 'bg-ink text-cream'
-          : 'border border-ink/35 bg-transparent text-ink border-dashed',
+          ? invert
+            ? 'bg-cream text-ink'
+            : 'bg-ink text-cream'
+          : invert
+            ? 'border border-dashed border-cream/80 bg-ink/20 text-cream'
+            : 'border border-dashed border-ink/35 bg-transparent text-ink',
         className,
       )}
       title={measured ? 'From listed garment measurements' : 'Estimated from the length class'}

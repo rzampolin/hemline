@@ -299,7 +299,7 @@ function SwipeCard({ item, className }: { item: RankedListing; className?: strin
             <span className="font-display text-lg text-cream">{formatPrice(listing.priceCents)}</span>
           </div>
           <p className="truncate text-sm text-cream/80">{listing.title}</p>
-          <HemBadge hem={hem} className="mt-1.5 bg-cream text-ink border-none" />
+          <HemBadge hem={hem} invert data-testid="hem-badge" className="mt-1.5" />
         </div>
       </div>
     </div>
