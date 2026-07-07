@@ -8,8 +8,15 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@hemline/ai": "*",
     "@hemline/connectors": "*",
     "@hemline/contracts": "*",
-    "@hemline/db": "*"
+    "@hemline/db": "*",
+    "drizzle-orm": "^0.44.0",
+    "node-cron": "^4.0.0"
+  },
+  "devDependencies": {
+    "better-sqlite3": "^12.0.0",
+    "@types/better-sqlite3": "^7.6.0"
   }
 }
