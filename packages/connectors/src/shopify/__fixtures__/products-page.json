@@ -1,0 +1,164 @@
+{
+  "products": [
+    {
+      "id": 8057672073392,
+      "title": "Vinnie Dress | White",
+      "handle": "vinnie-dress-white",
+      "body_html": "<p>The Vinnie Dress is an off-the-shoulder, <strong>midi-length</strong> dress featuring a relaxed neckline, fitted body, and raw edge hem.</p><p>Length from shoulder to hem: 44\"</p>",
+      "published_at": "2026-06-24T07:46:24-04:00",
+      "created_at": "2026-05-31T22:36:04-04:00",
+      "updated_at": "2026-07-06T19:49:57-04:00",
+      "vendor": "With Jéan",
+      "product_type": "Midi Dress",
+      "tags": ["All", "Apparel", "colour_white", "Dress", "Dresses", "Midi Dress", "New", "linen", "vacation-edit"],
+      "options": [{ "name": "Size", "position": 1, "values": ["XXS", "XS", "S", "M"] }],
+      "variants": [
+        {
+          "id": 45135437955248,
+          "title": "XXS",
+          "option1": "XXS",
+          "option2": null,
+          "option3": null,
+          "sku": "S51VINMDRWHT-XXS",
+          "available": true,
+          "price": "158.00",
+          "compare_at_price": "0.00",
+          "position": 1
+        },
+        {
+          "id": 45135437988016,
+          "title": "XS",
+          "option1": "XS",
+          "option2": null,
+          "option3": null,
+          "sku": "S51VINMDRWHT-XS",
+          "available": false,
+          "price": "158.00",
+          "compare_at_price": "0.00",
+          "position": 2
+        },
+        {
+          "id": 45135438020784,
+          "title": "S",
+          "option1": "S",
+          "option2": null,
+          "option3": null,
+          "sku": "S51VINMDRWHT-S",
+          "available": true,
+          "price": "158.00",
+          "compare_at_price": "0.00",
+          "position": 3
+        },
+        {
+          "id": 45135438053552,
+          "title": "M",
+          "option1": "M",
+          "option2": null,
+          "option3": null,
+          "sku": "S51VINMDRWHT-M",
+          "available": true,
+          "price": "162.00",
+          "compare_at_price": "0.00",
+          "position": 4
+        }
+      ],
+      "images": [
+        {
+          "id": 38699688558768,
+          "position": 2,
+          "src": "https://cdn.shopify.com/s/files/1/0512/3103/1472/files/vinnie-dress-white-02.jpg?v=2",
+          "width": 2048,
+          "height": 3089
+        },
+        {
+          "id": 38699688132784,
+          "position": 1,
+          "src": "https://cdn.shopify.com/s/files/1/0512/3103/1472/files/vinnie-dress-white-01.jpg?v=1",
+          "width": 2048,
+          "height": 3089
+        }
+      ]
+    },
+    {
+      "id": 8112527409325,
+      "title": "Christos Mini Tote | Espresso",
+      "handle": "christos-mini-tote-espresso",
+      "body_html": "<p>A mini unlined tote easy to take anywhere. Made from a tinted leather.</p>",
+      "vendor": "STAUD",
+      "product_type": "Handbags",
+      "tags": ["Accessories", "Bags", "New"],
+      "options": [{ "name": "Color", "position": 1, "values": ["ESPRESSO"] }],
+      "variants": [
+        {
+          "id": 44001,
+          "title": "ESPRESSO",
+          "option1": "ESPRESSO",
+          "option2": null,
+          "option3": null,
+          "available": true,
+          "price": "295.00",
+          "position": 1
+        }
+      ],
+      "images": [
+        {
+          "id": 91,
+          "position": 1,
+          "src": "https://cdn.shopify.com/s/files/1/staud/christos-mini-tote.jpg?v=1"
+        }
+      ]
+    },
+    {
+      "id": 8112527400001,
+      "title": "Poplin Dress Shirt | Blue Stripe",
+      "handle": "poplin-dress-shirt-blue",
+      "body_html": "<p>A crisp poplin dress shirt.</p>",
+      "vendor": "STAUD",
+      "product_type": "Shirts",
+      "tags": ["Tops", "Shirting"],
+      "options": [{ "name": "Size", "position": 1, "values": ["S", "M"] }],
+      "variants": [
+        { "id": 44011, "title": "S", "option1": "S", "option2": null, "option3": null, "available": true, "price": "175.00", "position": 1 },
+        { "id": 44012, "title": "M", "option1": "M", "option2": null, "option3": null, "available": true, "price": "175.00", "position": 2 }
+      ],
+      "images": []
+    },
+    {
+      "id": 8112527411111,
+      "title": "Wells Gown | Black",
+      "handle": "wells-gown-black",
+      "body_html": "<p>A floor-length silk slip gown with a cowl neckline. Perfect wedding guest look.</p>",
+      "vendor": "",
+      "product_type": "",
+      "tags": ["Dresses", "silk", "evening"],
+      "options": [
+        { "name": "Color", "position": 1, "values": ["Black"] },
+        { "name": "Size", "position": 2, "values": ["2", "4", "6"] }
+      ],
+      "variants": [
+        { "id": 44021, "title": "Black / 2", "option1": "Black", "option2": "2", "option3": null, "available": false, "price": "425.00", "position": 1 },
+        { "id": 44022, "title": "Black / 4", "option1": "Black", "option2": "4", "option3": null, "available": true, "price": "425.00", "position": 2 },
+        { "id": 44023, "title": "Black / 6", "option1": "Black", "option2": "6", "option3": null, "available": true, "price": "399.00", "position": 3 }
+      ],
+      "images": [
+        { "id": 92, "position": 1, "src": "https://cdn.shopify.com/s/files/1/staud/wells-gown-1.jpg" },
+        { "id": 93, "position": 2, "src": "https://cdn.shopify.com/s/files/1/staud/wells-gown-2.jpg" }
+      ]
+    },
+    {
+      "id": 8112527422222,
+      "title": "Gift Card",
+      "handle": "gift-card",
+      "body_html": "<p>The perfect gift: a dress fund.</p>",
+      "vendor": "STAUD",
+      "product_type": "Gift Card",
+      "tags": [],
+      "options": [{ "name": "Denominations", "position": 1, "values": ["$50", "$100"] }],
+      "variants": [
+        { "id": 44031, "title": "$50", "option1": "$50", "option2": null, "option3": null, "available": true, "price": "50.00", "position": 1 },
+        { "id": 44032, "title": "$100", "option1": "$100", "option2": null, "option3": null, "available": true, "price": "100.00", "position": 2 }
+      ],
+      "images": []
+    }
+  ]
+}

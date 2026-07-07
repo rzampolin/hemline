@@ -13,6 +13,11 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@hemline/contracts": "*"
+    "@hemline/contracts": "*",
+    "drizzle-orm": "^0.44.0"
+  },
+  "devDependencies": {
+    "better-sqlite3": "^12.0.0",
+    "@types/better-sqlite3": "^7.6.0"
   }
 }

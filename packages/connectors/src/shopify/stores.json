@@ -1,17 +1,113 @@
 [
-  { "domain": "staud.clothing", "displayName": "STAUD" },
-  { "domain": "thereformation.com", "displayName": "Reformation" },
-  { "domain": "realisationpar.com", "displayName": "Réalisation Par" },
-  { "domain": "rouje.com", "displayName": "Rouje" },
-  { "domain": "withjean.com", "displayName": "With Jéan" },
-  { "domain": "faithfullthebrand.com", "displayName": "Faithfull the Brand" },
-  { "domain": "christydawn.com", "displayName": "Christy Dawn" },
-  { "domain": "shopdoen.com", "displayName": "Dôen" },
-  { "domain": "sezane.com", "displayName": "Sézane" },
-  { "domain": "ganni.com", "displayName": "GANNI" },
-  { "domain": "rixo.co.uk", "displayName": "RIXO" },
-  { "domain": "houseofcb.com", "displayName": "House of CB" },
-  { "domain": "forloveandlemons.com", "displayName": "For Love & Lemons" },
-  { "domain": "fillyboo.com", "displayName": "Fillyboo" },
-  { "domain": "petallura.com", "displayName": "Petal & Pup" }
+  { "domain": "staud.clothing", "displayName": "STAUD", "verified": true },
+  { "domain": "us.rouje.com", "displayName": "Rouje", "verified": true },
+  { "domain": "shopdoen.com", "displayName": "Dôen", "verified": true },
+  { "domain": "withjean.com", "displayName": "With Jéan", "verified": true },
+  { "domain": "faithfullthebrand.com", "displayName": "Faithfull the Brand", "verified": true },
+  { "domain": "christydawn.com", "displayName": "Christy Dawn", "verified": true },
+  { "domain": "rixo.co.uk", "displayName": "RIXO", "verified": true, "currency": "GBP" },
+  { "domain": "petalandpup.com", "displayName": "Petal & Pup", "verified": true },
+  { "domain": "hillhousehome.com", "displayName": "Hill House Home", "verified": true },
+  { "domain": "loveshackfancy.com", "displayName": "LoveShackFancy", "verified": true },
+  { "domain": "sisterjane.com", "displayName": "Sister Jane", "verified": true, "currency": "GBP" },
+  { "domain": "selkiecollection.com", "displayName": "Selkie", "verified": true },
+  { "domain": "ohpolly.com", "displayName": "Oh Polly", "verified": true },
+  { "domain": "meshki.us", "displayName": "MESHKI", "verified": true },
+  { "domain": "motelrocks.com", "displayName": "Motel Rocks", "verified": true },
+  { "domain": "dissh.com", "displayName": "DISSH", "verified": true },
+  { "domain": "farmrio.com", "displayName": "FARM Rio", "verified": true },
+  { "domain": "batsheva.com", "displayName": "Batsheva", "verified": true },
+  { "domain": "the-sleeper.com", "displayName": "Sleeper", "verified": true },
+  { "domain": "ciaolucia.com", "displayName": "Ciao Lucia", "verified": true },
+  { "domain": "cultgaia.com", "displayName": "Cult Gaia", "verified": true },
+  { "domain": "ratandboa.com", "displayName": "Rat & Boa", "verified": true },
+  { "domain": "kitristudio.com", "displayName": "KITRI", "verified": true, "currency": "GBP" },
+  {
+    "domain": "neverfullydressed.com",
+    "displayName": "Never Fully Dressed",
+    "verified": true,
+    "currency": "GBP"
+  },
+  {
+    "domain": "nobodyschild.com",
+    "displayName": "Nobody's Child",
+    "verified": true,
+    "currency": "GBP"
+  },
+  {
+    "domain": "damsonmadder.com",
+    "displayName": "Damson Madder",
+    "verified": true,
+    "currency": "GBP"
+  },
+  { "domain": "misalosangeles.com", "displayName": "MISA Los Angeles", "verified": true },
+  { "domain": "sirthelabel.com", "displayName": "SIR.", "verified": true },
+  { "domain": "ajeworld.com", "displayName": "Aje", "verified": true },
+  { "domain": "becandbridge.com", "displayName": "Bec + Bridge", "verified": true },
+  {
+    "domain": "thereformation.com",
+    "displayName": "Reformation",
+    "verified": false,
+    "note": "probed 2026-07-06: HTTP 404 — not a Shopify storefront (custom platform)"
+  },
+  {
+    "domain": "realisationpar.com",
+    "displayName": "Réalisation Par",
+    "verified": false,
+    "note": "probed 2026-07-06: HTTP 404 — products.json disabled"
+  },
+  {
+    "domain": "houseofcb.com",
+    "displayName": "House of CB",
+    "verified": false,
+    "note": "probed 2026-07-06: HTTP 404 — products.json disabled"
+  },
+  {
+    "domain": "forloveandlemons.com",
+    "displayName": "For Love & Lemons",
+    "verified": false,
+    "note": "probed 2026-07-06: HTTP 404 — products.json disabled"
+  },
+  {
+    "domain": "sezane.com",
+    "displayName": "Sézane",
+    "verified": false,
+    "note": "probed 2026-07-06: HTTP 403 — bot-blocked"
+  },
+  {
+    "domain": "ganni.com",
+    "displayName": "GANNI",
+    "verified": false,
+    "note": "probed 2026-07-06: connection failed"
+  },
+  {
+    "domain": "hellomolly.com",
+    "displayName": "Hello Molly",
+    "verified": false,
+    "note": "probed 2026-07-06: HTTP 403 — bot-blocked"
+  },
+  {
+    "domain": "shoprhode.com",
+    "displayName": "RHODE",
+    "verified": false,
+    "note": "probed 2026-07-06: HTTP 402 — storefront unavailable"
+  },
+  {
+    "domain": "spell.co",
+    "displayName": "Spell",
+    "verified": false,
+    "note": "not yet probed"
+  },
+  {
+    "domain": "augustethelabel.com",
+    "displayName": "Auguste the Label",
+    "verified": false,
+    "note": "not yet probed"
+  },
+  {
+    "domain": "fillyboo.com",
+    "displayName": "Fillyboo",
+    "verified": false,
+    "note": "not yet probed"
+  }
 ]
