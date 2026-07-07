@@ -81,9 +81,13 @@ export function expandSourceFilter(db: Db, sources: string[] | undefined): strin
   const all = db.select({ id: sourcesTable.id }).from(sourcesTable).all().map((r) => r.id);
   const out = new Set<string>();
   for (const value of sources) {
-    if (value === 'resale') for (const id of all) RESALE_RE.test(id) && out.add(id);
-    else if (value === 'brand') for (const id of all) !RESALE_RE.test(id) && out.add(id);
-    else out.add(value);
+    if (value === 'resale') {
+      for (const id of all) if (RESALE_RE.test(id)) out.add(id);
+    } else if (value === 'brand') {
+      for (const id of all) if (!RESALE_RE.test(id)) out.add(id);
+    } else {
+      out.add(value);
+    }
   }
   return [...out];
 }

@@ -11,14 +11,15 @@
  * - MOCK MODE: without EBAY_CLIENT_ID/SECRET it serves fixtures/ebay-sample.json
  *   with a visible `[MOCK]` log
  */
-import fs from 'node:fs';
 import type { FetchContext, FetchResult, RawListing, SourceConnector } from '@hemline/contracts';
 import { politeFetch, type PolitenessOptions } from '../framework/politeness';
 import { normalizeEbayItem, type EbayItemSummary } from './normalize';
+// Static JSON import (not fs + import.meta.url): survives the Next server
+// bundle where import.meta.url is not a file:// URL (integration 2026-07-06).
+import ebaySampleJson from '../fixtures/ebay-sample.json';
 
 export * from './normalize';
 
-const EBAY_SAMPLE_URL = new URL('../fixtures/ebay-sample.json', import.meta.url);
 /** eBay category 63861 = Clothing, Shoes & Accessories > Women > Dresses */
 export const EBAY_DRESS_CATEGORY_ID = '63861';
 const TOKEN_URL = 'https://api.ebay.com/identity/v1/oauth2/token';
@@ -37,9 +38,9 @@ export interface EbayConnectorOptions extends PolitenessOptions {
 }
 
 export function loadEbaySample(): { itemSummaries: EbayItemSummary[] } {
-  return JSON.parse(fs.readFileSync(EBAY_SAMPLE_URL, 'utf8')) as {
-    itemSummaries: EbayItemSummary[];
-  };
+  // structuredClone: callers may mutate; keep the module-level object pristine
+  // (fs.readFileSync used to hand out a fresh copy per call).
+  return structuredClone(ebaySampleJson) as { itemSummaries: EbayItemSummary[] };
 }
 
 export function createEbayConnector(opts: EbayConnectorOptions = {}): SourceConnector {

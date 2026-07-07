@@ -6,6 +6,7 @@ export default tseslint.config(
     ignores: [
       '**/node_modules/**',
       '**/.next/**',
+      '.claude/**',
       '**/dist/**',
       'data/**',
       '**/next-env.d.ts',
@@ -25,6 +26,15 @@ export default tseslint.config(
     files: ['scripts/**/*.mjs'],
     languageOptions: {
       globals: { console: 'readonly', process: 'readonly' },
+    },
+  },
+  {
+    // Test files may use `any` for response probing; `next build` lints
+    // app/api/__tests__ and was failing the build on these (pre-existing at
+    // the 4-way merge — see docs/decisions-integration.md).
+    files: ['**/*.test.ts', '**/__tests__/**'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
 );

@@ -6,12 +6,15 @@
  * for the documented upgrade path (Marqo-FashionSigLIP embeddings + sqlite-vec)
  * so the swap never touches callers.
  */
-import type { SwipeEvent } from '@hemline/contracts';
+import type { StyleSimilarity, SwipeEvent, SwipeSignal } from '@hemline/contracts';
 
 /**
  * The pluggable similarity backend (doc §1 "behind the StyleSimilarity
- * interface"). v1 ships `attributeStyleSimilarity`; a future
- * FashionSigLIP adapter implements the same interface:
+ * interface"). The interface itself was PROMOTED into @hemline/contracts at
+ * integration (2026-07-06 — the additive promotion requested in
+ * decisions-ai-eng.md #6); re-exported here for back-compat. v1 ships
+ * `attributeStyleSimilarity`; a future FashionSigLIP adapter implements the
+ * same interface:
  *
  *   // Upgrade path (deferred, doc §10): a sidecar service embeds listing
  *   // images with Marqo-FashionSigLIP; vectors live in sqlite-vec. The
@@ -28,26 +31,7 @@ import type { SwipeEvent } from '@hemline/contracts';
  *   // Record<string, number> maps at the contract boundary, dense vectors
  *   // serialize as {"0": .., "1": ..} with zero contract changes.
  */
-export interface StyleSimilarity {
-  /** Implementation tag, persisted alongside vectors for future migrations. */
-  readonly kind: string;
-  /** Similarity of a user style vector vs a listing vector, mapped to 0..1. */
-  score(
-    userStyleTags: Record<string, number>,
-    listingAttributeVector: Record<string, number>,
-  ): number;
-  /** Fold swipe like/dislike events into the user's profile style vector. */
-  updateFromSwipes(
-    current: Record<string, number>,
-    events: SwipeSignal[],
-  ): Record<string, number>;
-}
-
-export interface SwipeSignal {
-  verdict: SwipeEvent['verdict'];
-  /** The swiped listing's sparse attribute vector. */
-  attributeVector: Record<string, number>;
-}
+export type { StyleSimilarity, SwipeSignal } from '@hemline/contracts';
 
 /** Raw cosine similarity over sparse tag→weight vectors. Range −1..1. */
 export function cosineSimilarity(

@@ -7,7 +7,6 @@
  *
  * Regenerate deterministically: `node scripts/generate-fixtures.mjs`
  */
-import fs from 'node:fs';
 import type {
   ExtractedAttributes,
   FetchContext,
@@ -15,6 +14,9 @@ import type {
   RawListing,
   SourceConnector,
 } from '@hemline/contracts';
+// Static JSON import (not fs + import.meta.url): survives the Next server
+// bundle where import.meta.url is not a file:// URL (integration 2026-07-06).
+import listingsJson from './listings.json';
 
 export interface FixtureEntry {
   raw: RawListing;
@@ -27,10 +29,10 @@ export interface FixtureEntry {
   extraction: ExtractedAttributes;
 }
 
-const LISTINGS_URL = new URL('./listings.json', import.meta.url);
-
 export function loadFixtureEntries(): FixtureEntry[] {
-  return JSON.parse(fs.readFileSync(LISTINGS_URL, 'utf8')) as FixtureEntry[];
+  // structuredClone: callers may mutate entries; keep the module object pristine
+  // (fs.readFileSync used to hand out a fresh copy per call).
+  return structuredClone(listingsJson) as unknown as FixtureEntry[];
 }
 
 export const fixturesConnector: SourceConnector = {

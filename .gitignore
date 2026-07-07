@@ -24,3 +24,4 @@ coverage/
 # playwright artifacts (screenshots are committed deliverables)
 e2e/test-results/
 playwright-report/
+.claude/

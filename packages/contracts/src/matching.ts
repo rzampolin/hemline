@@ -95,3 +95,33 @@ export interface MatchingService {
     heelInches?: number,
   ): HemResult;
 }
+
+// ── StyleSimilarity (promoted from packages/matching, 2026-07-06) ─────────
+// The pluggable similarity backend behind §1's "StyleSimilarity interface".
+// v1: sparse attribute-tag cosine (packages/matching attributeStyleSimilarity);
+// upgrade path: FashionSigLIP embeddings + sqlite-vec behind the same seam.
+// Additive promotion requested in decisions-ai-eng.md #6.
+
+/** One swipe folded into the learned style vector. Verdict union mirrors
+ * SwipeEvent.verdict (inlined here — profile.ts imports this file, so a
+ * type-level import the other way would be a cycle). */
+export interface SwipeSignal {
+  verdict: 'like' | 'dislike' | 'save' | 'skip';
+  /** The swiped listing's sparse attribute vector. */
+  attributeVector: Record<string, number>;
+}
+
+export interface StyleSimilarity {
+  /** Implementation tag, persisted alongside vectors for future migrations. */
+  readonly kind: string;
+  /** Similarity of a user style vector vs a listing vector, mapped to 0..1. */
+  score(
+    userStyleTags: Record<string, number>,
+    listingAttributeVector: Record<string, number>,
+  ): number;
+  /** Fold swipe like/dislike events into the user's profile style vector. */
+  updateFromSwipes(
+    current: Record<string, number>,
+    events: SwipeSignal[],
+  ): Record<string, number>;
+}
