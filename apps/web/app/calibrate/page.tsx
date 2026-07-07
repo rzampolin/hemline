@@ -296,7 +296,7 @@ function SwipeCard({ item, className }: { item: RankedListing; className?: strin
             <span className="truncate text-xs font-semibold tracking-widest text-cream/85 uppercase">
               {listing.brand ?? 'One of a kind'}
             </span>
-            <span className="font-display text-lg text-cream">{formatPrice(listing.priceCents)}</span>
+            <span className="font-display text-lg text-cream">{formatPrice(listing.priceCents, listing.currency)}</span>
           </div>
           <p className="truncate text-sm text-cream/80">{listing.title}</p>
           <HemBadge hem={hem} invert data-testid="hem-badge" className="mt-1.5" />
@@ -313,7 +313,7 @@ function PeekContent({ item }: { item: RankedListing }) {
     <div className="space-y-3 pb-2">
       <p className="font-display text-lg leading-snug text-ink">{listing.title}</p>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold">{formatPrice(listing.priceCents)}</span>
+        <span className="font-semibold">{formatPrice(listing.priceCents, listing.currency)}</span>
         <SourceBadge sourceId={listing.sourceId} brand={listing.brand} />
         {listing.lengthClass && (
           <span className="text-xs text-ink-soft">labeled {lengthClassLabel[listing.lengthClass]}</span>

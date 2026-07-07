@@ -11,9 +11,12 @@ import { HemBadge } from './hem';
 import { RemovableChip } from './chip';
 import { cn } from './cn';
 
-export function formatPrice(cents: number): string {
-  const dollars = cents / 100;
-  return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
+const CURRENCY_SYMBOL: Record<string, string> = { USD: '$', GBP: '£', EUR: '€', AUD: 'A$', CAD: 'C$' };
+
+export function formatPrice(cents: number, currency = 'USD'): string {
+  const units = cents / 100;
+  const symbol = CURRENCY_SYMBOL[currency] ?? `${currency} `;
+  return Number.isInteger(units) ? `${symbol}${units}` : `${symbol}${units.toFixed(2)}`;
 }
 
 export function HeartButton({
@@ -108,7 +111,7 @@ export function ProductCard({
             <span className="truncate text-[11px] font-semibold tracking-widest text-ink-soft uppercase">
               {listing.brand ?? 'One of a kind'}
             </span>
-            <span className="shrink-0 text-sm font-semibold text-ink">{formatPrice(listing.priceCents)}</span>
+            <span className="shrink-0 text-sm font-semibold text-ink">{formatPrice(listing.priceCents, listing.currency)}</span>
           </div>
           <p className="truncate text-xs text-ink-soft">{listing.title}</p>
           <HemBadge hem={hem} data-testid="hem-badge" />

@@ -26,6 +26,7 @@ import {
   ingestRuns,
   listingImages,
   listings,
+  normalizeSizeLabels,
   sources,
   type Db,
 } from '@hemline/db';
@@ -203,6 +204,7 @@ export async function runPipeline(
               isVintage: raw.isVintage ?? false,
               era: raw.era ?? null,
               sizeLabelsJson: JSON.stringify(raw.sizeLabels),
+              sizeNormalizedJson: JSON.stringify(normalizeSizeLabels(raw.sizeLabels)),
               availabilityJson: JSON.stringify(raw.availability ?? {}),
               contentHash: hash,
               firstSeenAt: raw.seenAt,
@@ -241,6 +243,7 @@ export async function runPipeline(
               isVintage: raw.isVintage ?? false,
               era: raw.era ?? null,
               sizeLabelsJson: JSON.stringify(raw.sizeLabels),
+              sizeNormalizedJson: JSON.stringify(normalizeSizeLabels(raw.sizeLabels)),
               availabilityJson: JSON.stringify(raw.availability ?? {}),
               contentHash: hash,
               lastSeenAt: raw.seenAt,
@@ -285,10 +288,25 @@ export async function runPipeline(
 
   // ── extraction hand-off (isolated; stub-safe) ────────────────────────
   if (opts.extract !== false) {
-    const inputs = buildPendingExtractionInputs(db, affectedSourceIds);
-    const outcome = await runExtraction(db, inputs, logger, env);
-    stats.extracted = outcome.extracted;
-    stats.extractionPending = outcome.pending;
+    // Drain in ≤500-listing batches. Previously a single capped batch ran and
+    // `pending` was computed only against that batch, so a >500-listing crawl
+    // reported "0 pending" while the overflow sat unextracted until the next
+    // run. Loop until the queue is empty; a zero-progress batch (service
+    // down/failing) breaks out and reports the remainder honestly.
+    stats.extracted = 0;
+    for (;;) {
+      const inputs = buildPendingExtractionInputs(db, affectedSourceIds);
+      if (inputs.length === 0) {
+        stats.extractionPending = 0;
+        break;
+      }
+      const outcome = await runExtraction(db, inputs, logger, env);
+      stats.extracted += outcome.extracted;
+      if (outcome.extracted === 0) {
+        stats.extractionPending = buildPendingExtractionInputs(db, affectedSourceIds).length;
+        break;
+      }
+    }
   }
 
   logger.info(

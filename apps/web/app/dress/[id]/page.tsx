@@ -167,7 +167,7 @@ export default function DressDetailPage() {
             </div>
             <h1 className="mt-2 font-display text-2xl leading-snug text-ink">{listing.title}</h1>
             <div className="mt-1 flex items-baseline gap-3">
-              <span className="font-display text-2xl text-ink">{formatPrice(listing.priceCents)}</span>
+              <span className="font-display text-2xl text-ink">{formatPrice(listing.priceCents, listing.currency)}</span>
               {listing.brand && <span className="text-sm text-ink-soft">{listing.brand}</span>}
             </div>
             {isStale(listing.lastSeenAt) && (

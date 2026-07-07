@@ -80,6 +80,9 @@ describe('runPipeline upsert semantics', () => {
       contentHash: contentHashFor(a),
     });
     expect(JSON.parse(rowA.availabilityJson)).toEqual({ S: true, M: true });
+    // sizes are normalized at ingest (fixture convention: S→4/6, M→8/10) so
+    // the feed's SQL size filter can see connector data
+    expect(JSON.parse(rowA.sizeNormalizedJson)).toEqual([4, 6, 8, 10]);
 
     const images = db
       .select()

@@ -102,6 +102,19 @@ describe('mockExtract — contract & determinism', () => {
     });
     expect(attrs.lengthClass).toBe('mini');
   });
+
+  it('classifies "ankle length" DTC copy as maxi (live Christy Dawn pattern)', () => {
+    const attrs = mockExtract({
+      contentHash: 'x',
+      title: 'The Dawn Dress',
+      description: 'Ankle length dress inspired by vintage nightgowns. Made from 100% silk.',
+      brand: 'Christy Dawn',
+      primaryImageUrl: null,
+      attributeHints: null,
+      sizeLabels: [],
+    });
+    expect(attrs.lengthClass).toBe('maxi');
+  });
 });
 
 describe('mockExtract — accuracy vs fixture ground truth', () => {

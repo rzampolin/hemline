@@ -93,8 +93,11 @@ export function queryCandidates(db: Db, opts: CandidateQueryOptions = {}): Candi
   const conds: SQL[] = [isNull(listings.removedAt) as SQL, freshnessCondition(kinds, now, opts.freshnessHours)];
 
   if (opts.sizesNormalized && opts.sizesNormalized.length > 0) {
+    // Size-unknown (`[]`) is not a mismatch — packages/matching filters.ts
+    // rule 3 ("unknown ≠ no"); connector data without parseable size labels
+    // must stay feed-eligible rather than silently vanish.
     conds.push(
-      sql`EXISTS (SELECT 1 FROM json_each(${listings.sizeNormalizedJson}) je WHERE je.value IN (${inListSql(opts.sizesNormalized)}))`,
+      sql`(json_array_length(${listings.sizeNormalizedJson}) = 0 OR EXISTS (SELECT 1 FROM json_each(${listings.sizeNormalizedJson}) je WHERE je.value IN (${inListSql(opts.sizesNormalized)})))`,
     );
   }
   if (opts.priceMinCents != null) conds.push(gte(listings.priceCents, opts.priceMinCents) as SQL);

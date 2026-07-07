@@ -203,9 +203,11 @@ export function normalizeShopifyProduct(
     sourceId: `shopify:${store.domain}`,
     sourceListingId: String(p.id),
     sourceUrl: `https://${store.domain}/products/${p.handle}`,
-    title: p.title,
+    // Some stores put markup in titles/vendors (e.g. Sister Jane's
+    // "<b>DREAM</b> Thelma Dress") — strip it or the UI renders literal tags.
+    title: stripHtml(p.title).trim(),
     ...(description ? { description } : {}),
-    brand: p.vendor?.trim() || store.displayName,
+    brand: stripHtml(p.vendor ?? '').trim() || store.displayName,
     priceCents: Math.round(price * 100),
     currency: store.currency ?? 'USD',
     imageUrls,

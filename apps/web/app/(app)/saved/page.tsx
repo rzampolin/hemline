@@ -14,19 +14,24 @@ import { ListingGrid } from '../../components/grid';
 
 export default function SavedPage() {
   const { savedIds } = useProfile();
-  const [items, setItems] = useState<RankedListing[] | null>(null);
+  const [fetched, setFetched] = useState<RankedListing[] | null>(null);
   const [syncNudge, setSyncNudge] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     api
       .getSaved()
-      .then((res) => !cancelled && setItems(res))
-      .catch(() => !cancelled && setItems([]));
+      .then((res) => !cancelled && setFetched(res))
+      .catch(() => !cancelled && setFetched([]));
     return () => {
       cancelled = true;
     };
   }, [savedIds]);
+
+  // savedIds is the instant client truth; the refetch races the
+  // fire-and-forget DELETE in toggleSave, so an unsaved card could otherwise
+  // linger until the next reload. Filter so unsave removes the card at once.
+  const items = fetched === null ? null : fetched.filter((i) => savedIds.includes(i.listing.id));
 
   return (
     <main className="px-4 pt-4">

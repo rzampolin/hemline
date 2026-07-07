@@ -83,7 +83,7 @@ export function LandingStrip() {
                       <span className="truncate text-[10px] font-semibold tracking-widest text-ink-soft uppercase">
                         {listing.brand ?? 'One of a kind'}
                       </span>
-                      <span className="text-xs font-semibold">{formatPrice(listing.priceCents)}</span>
+                      <span className="text-xs font-semibold">{formatPrice(listing.priceCents, listing.currency)}</span>
                     </div>
                     <HemBadge hem={hem} />
                   </div>

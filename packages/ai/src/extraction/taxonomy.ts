@@ -78,6 +78,9 @@ export const LENGTH_KEYWORDS: Array<[RegExp, LengthClass]> = [
   [/\bmidi\b/i, 'midi'],
   [/\b(mid[-\s]?calf|tea[-\s]?length)\b/i, 'mid_calf'],
   [/\bmaxi\b/i, 'maxi'],
+  // "ankle length/ankle-grazing" is common DTC copy (e.g. Christy Dawn);
+  // garment-class maxi (55" prior) lands in the ankle zone on the ref body.
+  [/\bankle[-\s]?(?:length|grazing)\b/i, 'maxi'],
   [/\b(floor[-\s]?length|gown|full[-\s]?length)\b/i, 'floor'],
 ];
 
