@@ -71,7 +71,6 @@ export function LandingStrip() {
               return (
                 <li key={listing.id} className="w-40 shrink-0 snap-start">
                   <div className="overflow-hidden rounded-2xl bg-parchment shadow-card">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={resolveImage(listing.images[0] ?? '')}
                       alt={listing.title}

@@ -85,7 +85,6 @@ export function ProductCard({
     <article data-testid="product-card" className={cn('group relative', className)}>
       <Link href={href} className="block focus-visible:outline-accent" aria-label={listing.title}>
         <div className="relative overflow-hidden rounded-2xl bg-parchment shadow-card">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imageSrc}
             alt={listing.title}
