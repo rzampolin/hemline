@@ -13,6 +13,9 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@hemline/contracts": "*"
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@hemline/contracts": "*",
+    "sharp": "^0.34.5",
+    "zod": "^3.25.76"
   }
 }
