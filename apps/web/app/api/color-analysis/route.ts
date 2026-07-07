@@ -1,17 +1,21 @@
 /**
  * POST /api/color-analysis — selfie → ColorAnalysisResult (§4.7, §7.4).
  *   Accepts multipart/form-data (field `selfie`) or JSON `{ imageBase64 }`.
- *   The image is processed IN MEMORY ONLY — never written to disk or db, and
- *   the result is NOT auto-saved to the profile (user confirms via PUT).
+ *   Wired to the REAL @hemline/ai pipeline: sharp Lab sampling in memory →
+ *   Sonnet classification when keyed, deterministic rule table keyless (the
+ *   degradation lives inside packages/ai, §7.5). The image is processed IN
+ *   MEMORY ONLY — never written to disk or db — and the result is NOT
+ *   auto-saved to the profile (user confirms via PUT).
  * PUT /api/color-analysis — { season } → UserProfile. User accepts/overrides
- *   the season; the season's palette is stored alongside (only season +
- *   palette ever persist — spec D1).
+ *   the season; the season's curated palette is stored alongside (only
+ *   season + palette ever persist — spec D1).
  */
 import { ColorAnalysisPutSchema } from '@hemline/contracts';
+import { analyzeSelfie, SEASON_DATA } from '@hemline/ai';
 import { setColorSeason } from '@hemline/db';
 import { getDb } from '../lib/db';
 import { fail, ok, serverError, zodFail } from '../lib/envelope';
-import { analyzeSelfieStubTolerant, paletteForSeason } from '../lib/color';
+import { getAiClient } from '../lib/matching';
 import { requireUserId } from '../lib/session';
 
 export const runtime = 'nodejs';
@@ -57,9 +61,14 @@ export async function POST(req: Request) {
     const image = await readImageBuffer(req);
     if (!Buffer.isBuffer(image)) return fail('invalid_request', image.error, 400);
 
-    // In-memory only: analyzed, returned, discarded. Never persisted.
-    const result = await analyzeSelfieStubTolerant(image);
-    return ok(result);
+    // In-memory only: sampled, classified, returned, discarded. Never persisted.
+    try {
+      const result = await analyzeSelfie(image, { client: getAiClient() });
+      return ok(result);
+    } catch {
+      // sharp couldn't decode the bytes — not an image we can sample
+      return fail('invalid_image', 'Could not read that image — try a JPEG or PNG selfie.', 400);
+    }
   } catch (err) {
     return serverError('color-analysis', err);
   }
@@ -79,7 +88,7 @@ export async function PUT(req: Request) {
     const parsed = ColorAnalysisPutSchema.safeParse(body);
     if (!parsed.success) return zodFail(parsed.error);
     const { season } = parsed.data;
-    return ok(setColorSeason(db, userId, season, paletteForSeason(season)));
+    return ok(setColorSeason(db, userId, season, SEASON_DATA[season].palette));
   } catch (err) {
     return serverError('color-analysis', err);
   }

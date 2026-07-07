@@ -3,16 +3,17 @@
  * (§4.7). userId comes from the cookie; the body's userId is ignored when a
  * session exists (contract keeps the field, so it stays accepted).
  *
- * Pipeline (§6): profile hard filters (silent defaults: her sizes + budget,
- * spec B1) ∩ request filters → SQL candidates capped 500 newest-first →
- * per-user hem + deterministic score₀ → optional LLM re-rank (stub-tolerant)
- * → page.
+ * Pipeline (§6) via the real MatchingService (packages/matching) with the
+ * real re-ranker (packages/ai — LLM when keyed, deterministic keyless):
+ * profile hard filters (silent defaults: her sizes + budget, spec B1) ∩
+ * request filters → SQL candidates capped 500 newest-first → per-user hem +
+ * score₀ → optional re-rank → page.
  */
 import { RankRequestSchema } from '@hemline/contracts';
-import { getUserProfile, queryCandidates } from '@hemline/db';
+import { getUserProfile } from '@hemline/db';
 import { getDb } from '../lib/db';
 import { fail, ok, serverError, zodFail } from '../lib/envelope';
-import { rankCandidates } from '../lib/matching';
+import { expandSourceFilter, rankForUser } from '../lib/matching';
 import { resolveUserId } from '../lib/session';
 
 export const runtime = 'nodejs';
@@ -42,21 +43,26 @@ export async function POST(req: Request) {
     const priceMin = f.priceMinCents ?? profile.budget.minCents ?? undefined;
     const priceMax = f.priceMaxCents ?? profile.budget.maxCents ?? undefined;
 
-    const candidates = queryCandidates(db, {
-      sizesNormalized: sizes,
-      priceMinCents: priceMin,
-      priceMaxCents: priceMax,
-      conditions: f.conditions,
-      brands: f.brands,
-      colorFamilies: f.colorFamilies,
-      query: f.query,
-    });
-
-    const response = await rankCandidates(profile, candidates, { lengthOnBody: f.lengthOnBody }, {
-      limit: Math.min(request.limit, 100),
-      cursor: request.cursor,
-      personalize: request.personalize,
-    });
+    const response = await rankForUser(
+      db,
+      profile,
+      {
+        sizesNormalized: sizes,
+        priceMinCents: priceMin,
+        priceMaxCents: priceMax,
+        conditions: f.conditions,
+        brands: f.brands,
+        colorFamilies: f.colorFamilies,
+        sourceIds: expandSourceFilter(db, f.sources),
+        query: f.query,
+      },
+      { lengthOnBody: f.lengthOnBody },
+      {
+        limit: Math.min(request.limit, 100),
+        cursor: request.cursor,
+        personalize: request.personalize,
+      },
+    );
     return ok(response);
   } catch (err) {
     return serverError('rank', err);

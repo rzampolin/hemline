@@ -173,6 +173,7 @@ describe('color quiz → profile', () => {
     const result = await data(await quizPOST(jsonReq('/api/color-analysis/quiz', 'POST', { answers })));
     expect(ColorAnalysisResultSchema.parse(result)).toBeTruthy();
     expect(result.season).toMatch(/autumn|spring/); // warm axis
+    expect(result.source).toBe('quiz'); // additive label: measured values are synthesized
     expect(result.palette.length).toBeGreaterThanOrEqual(10);
 
     // deterministic: same answers → same season
@@ -184,13 +185,27 @@ describe('color quiz → profile', () => {
     expect(profile.palette.length).toBeGreaterThan(0);
   });
 
-  it('selfie POST returns a deterministic result and PUT overrides the season', async () => {
-    const fakeJpeg = Buffer.from('not-really-a-jpeg-but-deterministic-bytes');
-    const body = { imageBase64: fakeJpeg.toString('base64') };
+  it('selfie POST samples a real image (sharp, in memory) deterministically; PUT overrides', async () => {
+    // real pixels → real sampling; the keyless path classifies from the
+    // measured Lab values via the deterministic rule table (§7.5)
+    const sharp = (await import('sharp')).default;
+    const png = await sharp({
+      create: { width: 320, height: 400, channels: 3, background: { r: 198, g: 148, b: 122 } },
+    })
+      .png()
+      .toBuffer();
+    const body = { imageBase64: png.toString('base64') };
     const r1 = await data(await colorPOST(jsonReq('/api/color-analysis', 'POST', body)));
     const r2 = await data(await colorPOST(jsonReq('/api/color-analysis', 'POST', body)));
     expect(ColorAnalysisResultSchema.parse(r1)).toBeTruthy();
+    expect(r1.source).toBe('selfie');
     expect(r2.season).toBe(r1.season); // same bytes → same season
+
+    // undecodable bytes → clean 400, not a 500
+    const bad = await colorPOST(
+      jsonReq('/api/color-analysis', 'POST', { imageBase64: Buffer.from('not-an-image').toString('base64') }),
+    );
+    expect(bad.status).toBe(400);
 
     const profile = await data(await colorPUT(jsonReq('/api/color-analysis', 'PUT', { season: 'soft_autumn' })));
     expect(profile.colorSeason).toBe('soft_autumn');
@@ -222,7 +237,10 @@ describe('feed (POST /api/rank)', () => {
     expect(rank.rerank.mode).toBe('deterministic');
   });
 
-  it('personalize:true survives the stubbed LLM re-rank (falls back deterministically)', async () => {
+  it('personalize:true keyless reports the HONEST rerank mode (deterministic, not llm)', async () => {
+    // packages/ai's reranker labels its keyless fallback 'deterministic';
+    // the old route lib mislabeled it 'llm' — that bug is gone with the
+    // real MatchingService wiring.
     const rank = await data(
       await rankPOST(
         jsonReq('/api/rank', 'POST', { userId: DEMO_USER_ID, filters: {}, limit: 5, personalize: true }),
@@ -230,6 +248,48 @@ describe('feed (POST /api/rank)', () => {
     );
     expect(rank.items.length).toBeGreaterThan(0);
     expect(rank.rerank.mode).toBe('deterministic');
+    expect(rank.rerank.costUsd).toBeNull(); // no key → no spend
+  });
+
+  it('filters by source facet (additive HardFilters.sources)', async () => {
+    const resale = await data(
+      await rankPOST(
+        jsonReq('/api/rank', 'POST', {
+          userId: DEMO_USER_ID,
+          filters: { sources: ['resale'] },
+          limit: 50,
+          personalize: false,
+        }),
+      ),
+    );
+    expect(resale.items.length).toBeGreaterThan(0);
+    for (const item of resale.items) expect(item.listing.sourceId).toBe('fixture:ebay');
+
+    const brand = await data(
+      await rankPOST(
+        jsonReq('/api/rank', 'POST', {
+          userId: DEMO_USER_ID,
+          filters: { sources: ['brand'] },
+          limit: 50,
+          personalize: false,
+        }),
+      ),
+    );
+    expect(brand.items.length).toBeGreaterThan(0);
+    for (const item of brand.items) expect(item.listing.sourceId).toBe('fixture:shopify');
+  });
+
+  it('items carry the additive paletteMatch flag and never leak attribute vectors', async () => {
+    const rank = await data(
+      await rankPOST(
+        jsonReq('/api/rank', 'POST', { userId: DEMO_USER_ID, filters: {}, limit: 24, personalize: false }),
+      ),
+    );
+    expect(rank.items.some((i: any) => i.paletteMatch === true)).toBe(true); // soft-autumn demo palette
+    for (const item of rank.items) {
+      expect(typeof item.paletteMatch).toBe('boolean');
+      expect('attributeVector' in item.listing).toBe(false);
+    }
   });
 
   it('paginates with a stable cursor', async () => {
@@ -304,6 +364,7 @@ describe('listing detail', () => {
     expect(detail.listing.images.length).toBeGreaterThan(0);
     expect(detail.hem.position).not.toBeNull(); // demo user is 5'4" — hem computable
     expect(detail.hem.basis).toBe('measured_length');
+    expect(detail.whyItWorks).toBeTypeOf('string'); // additive: server-composed one-liner
     expect(detail.similar.length).toBeGreaterThan(0);
     expect(detail.similar.map((s: any) => s.id)).not.toContain(id);
   });
@@ -397,7 +458,7 @@ describe('alerts (stub — stored, never sent)', () => {
 });
 
 describe('find dresses like this', () => {
-  it('keyword-extracts attributes and returns similar in-stock matches', async () => {
+  it('extracts attributes via the real @hemline/ai service (honest mock mode keyless)', async () => {
     const res = await data(
       await findSimilarPOST(
         jsonReq('/api/find-similar', 'POST', {
@@ -405,7 +466,7 @@ describe('find dresses like this', () => {
         }),
       ),
     );
-    expect(res.extractionMode).toBe('keyword'); // ai package is stubbed
+    expect(res.extractionMode).toBe('mock'); // no ANTHROPIC_API_KEY → rule engine (§7.5)
     expect(Object.keys(res.attributes)).toEqual(
       expect.arrayContaining(['silhouette:wrap', 'length:midi', 'pattern:floral', 'color:green']),
     );
@@ -440,7 +501,7 @@ describe('admin', () => {
     expect(shopify.listingCounts.active).toBe(shopify.listingCounts.total);
   });
 
-  it('POST /api/admin/ingest records a run and returns runId', async () => {
+  it('POST /api/admin/ingest runs the REAL fixtures pipeline and returns runId', async () => {
     const res = await data(
       await adminIngestPOST(jsonReq('/api/admin/ingest', 'POST', { sourceId: 'fixture:shopify' })),
     );
@@ -448,6 +509,11 @@ describe('admin', () => {
     const health = await data(await adminIngestGET(jsonReq('/api/admin/ingest', 'GET')));
     const shopify = health.sources.find((s: any) => s.id === 'fixture:shopify');
     expect(shopify.lastRun.id).toBe(res.runId);
+    // local/fixture sources run to completion before the response returns
+    expect(shopify.lastRun.status).toBe('ok');
+    expect((shopify.lastRun.stats as any).unchanged).toBeGreaterThan(0); // idempotent re-ingest
+    // the pipeline registered the connector-level source row too
+    expect(health.sources.some((s: any) => s.id === 'fixtures')).toBe(true);
   });
 
   it('extraction QA lists low-confidence rows and PATCH corrects them', async () => {

@@ -18,10 +18,10 @@ import {
   LengthClassSchema,
   type UserProfile,
 } from '@hemline/contracts';
-import { getUserProfile, queryCandidates } from '@hemline/db';
+import { getUserProfile } from '@hemline/db';
 import { getDb } from '../lib/db';
 import { ok, serverError, zodFail } from '../lib/envelope';
-import { rankCandidates } from '../lib/matching';
+import { expandSourceFilter, rankForUser } from '../lib/matching';
 import { resolveUserId } from '../lib/session';
 
 export const runtime = 'nodejs';
@@ -81,22 +81,21 @@ export async function GET(req: Request) {
     const userId = resolveUserId(req);
     const profile = (userId ? getUserProfile(db, userId) : null) ?? GUEST_PROFILE;
 
-    const candidates = queryCandidates(db, {
-      query: p.q,
-      sizesNormalized: p.sizes,
-      priceMinCents: p.priceMinCents,
-      priceMaxCents: p.priceMaxCents,
-      lengthClasses: p.lengthClass,
-      colorFamilies: p.colors,
-      brands: p.brands,
-      sourceIds: p.sources,
-      conditions: p.conditions,
-      freshnessHours: p.freshnessHours,
-    });
-
-    const response = await rankCandidates(
+    const response = await rankForUser(
+      db,
       profile,
-      candidates,
+      {
+        query: p.q,
+        sizesNormalized: p.sizes,
+        priceMinCents: p.priceMinCents,
+        priceMaxCents: p.priceMaxCents,
+        lengthClasses: p.lengthClass,
+        colorFamilies: p.colors,
+        brands: p.brands,
+        sourceIds: expandSourceFilter(db, p.sources),
+        conditions: p.conditions,
+        freshnessHours: p.freshnessHours,
+      },
       { lengthOnBody: p.lengthOnBody },
       { limit: p.limit, cursor: p.cursor, personalize: p.personalize },
     );

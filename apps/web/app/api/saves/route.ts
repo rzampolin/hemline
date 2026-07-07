@@ -20,7 +20,7 @@ import {
 } from '@hemline/db';
 import { getDb } from '../lib/db';
 import { fail, ok, serverError, zodFail } from '../lib/envelope';
-import { scoreCandidates } from '../lib/matching';
+import { toRankedListings } from '../lib/matching';
 import { requireUserId } from '../lib/session';
 
 export const runtime = 'nodejs';
@@ -41,8 +41,7 @@ export async function GET(req: Request) {
 
     const ids = savedListingIds(db, userId);
     const candidates = getListingsByIds(db, ids);
-    const scored = scoreCandidates(profile, candidates);
-    const items: RankedListing[] = scored.map(({ attributeVector: _av, ...rest }) => rest);
+    const items: RankedListing[] = toRankedListings(profile, candidates);
 
     const now = Date.now();
     const staleIds = candidates

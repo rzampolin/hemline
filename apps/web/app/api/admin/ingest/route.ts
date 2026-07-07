@@ -3,16 +3,19 @@
  *
  * GET  /api/admin/ingest → { sources: SourceHealth[] } — per source: last run,
  *   fetched/error stats, error-run count, listing counts + staleness buckets.
- * POST /api/admin/ingest { sourceId? } → { runId } — dev-convenience trigger.
- *   The real pipeline lives in apps/ingest (data-eng); until it's importable
- *   from the web app this records the requested run as status='error' with a
- *   `not_implemented` note so the trigger is visible in G1. Integration:
- *   swap `triggerIngest` to call the shared pipeline entrypoint.
+ * POST /api/admin/ingest { sourceId? } → { runId } — triggers the REAL shared
+ *   pipeline (@hemline/ingest, integration 2026-07-06). A trigger row is
+ *   recorded immediately and updated when the run completes. Local/fixture
+ *   sources run to completion before responding (fast, deterministic);
+ *   network sources (ebay / shopify crawls) run fire-and-forget so the
+ *   request never hangs on a crawl.
  *
  * Auth: HTTP Basic when ADMIN_BASIC_AUTH="user:pass" is set (spec G1).
  */
 import { AdminIngestRequestSchema, type AdminIngestResponse } from '@hemline/contracts';
-import { ingestionHealth, insertIngestRun, listSourceIds } from '@hemline/db';
+import { runIngestForSource, type IngestRunOutcome } from '@hemline/ingest';
+import { ingestionHealth, insertIngestRun, listSourceIds, ingestRuns, type Db } from '@hemline/db';
+import { eq } from 'drizzle-orm';
 import { checkAdminAuth } from '../../lib/admin-auth';
 import { getDb } from '../../lib/db';
 import { fail, ok, serverError, zodFail } from '../../lib/envelope';
@@ -27,6 +30,21 @@ export async function GET(req: Request) {
   } catch (err) {
     return serverError('admin/ingest', err);
   }
+}
+
+function finishTriggerRun(db: Db, runId: number, outcome: IngestRunOutcome): void {
+  db.update(ingestRuns)
+    .set({
+      finishedAt: Date.now(),
+      status: outcome.status,
+      statsJson: JSON.stringify({ ...outcome.stats, trigger: 'admin' }),
+      error:
+        outcome.status === 'error'
+          ? (outcome.results.find((r) => r.error)?.error ?? 'ingest failed')
+          : null,
+    })
+    .where(eq(ingestRuns.id, runId))
+    .run();
 }
 
 export async function POST(req: Request) {
@@ -46,17 +64,29 @@ export async function POST(req: Request) {
     const sourceId = parsed.data.sourceId ?? listSourceIds(db)[0];
     if (!sourceId) return fail('not_found', 'no sources configured', 404);
 
-    const now = Date.now();
+    // Trigger row: visible in G1 immediately, updated on completion.
     const runId = insertIngestRun(db, {
       sourceId,
-      startedAt: now,
-      finishedAt: now,
-      status: 'error',
-      stats: { fetched: 0, new: 0, updated: 0, unchanged: 0, errors: 1 },
-      error:
-        'not_implemented: one-shot ingest pipeline is apps/ingest (data-eng); ' +
-        'run `npm run ingest` instead. Trigger recorded for G1 visibility.',
+      startedAt: Date.now(),
+      status: 'running',
+      stats: { trigger: 'admin' },
     });
+
+    const isLocal = sourceId === 'fixtures' || sourceId.startsWith('fixture');
+    const run = runIngestForSource(db, sourceId)
+      .then((outcome) => finishTriggerRun(db, runId, outcome))
+      .catch((e: unknown) => {
+        db.update(ingestRuns)
+          .set({
+            finishedAt: Date.now(),
+            status: 'error',
+            error: e instanceof Error ? e.message : String(e),
+          })
+          .where(eq(ingestRuns.id, runId))
+          .run();
+      });
+    if (isLocal) await run; // fixtures are fast — return a settled run
+
     const data: AdminIngestResponse = { runId };
     return ok(data);
   } catch (err) {

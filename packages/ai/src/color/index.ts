@@ -74,6 +74,7 @@ export function classifyFromMeasured(measured: MeasuredColors): ColorAnalysisRes
     explanation: explainAxes(measured, season),
     measured,
     caveat: caveatFor(measured),
+    source: 'selfie',
   });
 }
 
@@ -92,6 +93,9 @@ export function classifyFromQuiz(answers: QuizAnswers): ColorAnalysisResult {
       `${axes.chroma >= 0.55 ? 'bright' : axes.chroma <= 0.3 ? 'soft, muted' : 'balanced'} natural contrast.`,
     measured,
     caveat: null,
+    // Contract-approved additive label: quiz results carry SYNTHESIZED
+    // measured values (no selfie was sampled) — decisions-ai-eng.md #15.
+    source: 'quiz',
   });
 }
 
@@ -145,6 +149,7 @@ async function classifyWithSonnet(
     explanation: output.explanation,
     measured,
     caveat: caveatFor(measured),
+    source: 'selfie',
   });
 }
 
@@ -156,6 +161,7 @@ function buildResult(args: {
   explanation: string;
   measured: MeasuredColors;
   caveat: string | null;
+  source: 'selfie' | 'quiz';
 }): ColorAnalysisResult {
   const data = SEASON_DATA[args.season];
   return {
@@ -166,6 +172,7 @@ function buildResult(args: {
     explanation: args.explanation,
     measured: args.measured,
     caveat: args.caveat,
+    source: args.source,
   };
 }
 

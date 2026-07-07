@@ -9,9 +9,10 @@ const nextConfig: NextConfig = {
     '@hemline/matching',
     '@hemline/ai',
     '@hemline/connectors',
+    '@hemline/ingest',
   ],
-  // Native module — must stay external to the server bundle.
-  serverExternalPackages: ['better-sqlite3'],
+  // Native modules — must stay external to the server bundle.
+  serverExternalPackages: ['better-sqlite3', 'sharp'],
 };
 
 export default nextConfig;

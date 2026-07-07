@@ -8,11 +8,24 @@
  * so the call is isolated: any throw leaves the listings pending (they are
  * retried on the next run) and never fails ingest.
  */
-import { and, inArray, isNull, notInArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, notExists, notInArray, sql } from 'drizzle-orm';
 import type { ExtractionInput, Logger } from '@hemline/contracts';
-import { extractions, listingImages, listings, type Db } from '@hemline/db';
+import {
+  createExtractionCacheStore,
+  extractions,
+  listingImages,
+  listings,
+  type Db,
+} from '@hemline/db';
 
-/** Listings of these sources with no extraction row yet → ExtractionInputs. */
+/**
+ * Listings of these sources with no extraction row yet → ExtractionInputs.
+ *
+ * Listings that carry a MANUAL correction (any extraction row with
+ * model='manual' for that listing, spec G2) are never re-queued — even when
+ * their content hash changed — so a re-ingest cannot clobber human QA
+ * (decisions-backend-eng.md #7 integration note).
+ */
 export function buildPendingExtractionInputs(
   db: Db,
   sourceIds: string[],
@@ -34,6 +47,12 @@ export function buildPendingExtractionInputs(
         inArray(listings.sourceId, sourceIds),
         isNull(listings.removedAt),
         notInArray(listings.contentHash, db.select({ h: extractions.contentHash }).from(extractions)),
+        notExists(
+          db
+            .select({ h: extractions.contentHash })
+            .from(extractions)
+            .where(and(eq(extractions.listingId, listings.id), eq(extractions.model, 'manual'))),
+        ),
       ),
     )
     .limit(limit)
@@ -83,14 +102,18 @@ export async function runExtraction(
   if (inputs.length === 0) return { extracted: 0, pending: 0 };
 
   try {
-    // Dynamic import: ai-eng's package may be a stub / absent in this worktree.
+    // Dynamic import keeps ingest usable even if @hemline/ai fails to load.
     const ai = (await import('@hemline/ai')) as {
-      createExtractionService?: () => import('@hemline/contracts').ExtractionService;
+      createExtractionService?: (opts?: {
+        cache?: ReturnType<typeof createExtractionCacheStore>;
+      }) => import('@hemline/contracts').ExtractionService;
     };
     if (typeof ai.createExtractionService !== 'function') {
       throw new Error('@hemline/ai does not export createExtractionService');
     }
-    const service = ai.createExtractionService();
+    // Drizzle-backed cache port: idempotent by content_hash across runs, and
+    // the service persists per-item models (mock vs live) itself.
+    const service = ai.createExtractionService({ cache: createExtractionCacheStore(db) });
     const results = await service.extractBatch(
       inputs.map(({ listingId: _listingId, ...input }) => input),
     );

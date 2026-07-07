@@ -52,6 +52,16 @@ export interface RerankPort {
   ): Promise<RerankOutcome>;
 }
 
+/**
+ * Candidates may carry the REAL sparse attribute vector from the extractions
+ * table (decisions-ai-eng.md #9 TODO resolved at integration): when present it
+ * is used for similarity instead of the `attributeVectorOf` derivation, which
+ * cannot reconstruct pattern:/occasion:/vibe: tags.
+ */
+export type CandidateWithVector = Listing & {
+  attributeVector?: Record<string, number>;
+};
+
 export interface MatchingPorts {
   loadProfile(userId: string): Promise<UserProfile>;
   /**
@@ -59,7 +69,7 @@ export interface MatchingPorts {
    * The service re-applies the full predicate set (incl. per-user hem and
    * measurement-based size compat) and the 500-newest cap.
    */
-  loadCandidates(filters: HardFilters): Promise<Listing[]>;
+  loadCandidates(filters: HardFilters): Promise<CandidateWithVector[]>;
   /** Optional LLM re-ranker; omit (or have it throw) for deterministic-only. */
   rerank?: RerankPort;
   /** Sparse-vector similarity backend; defaults to attribute-v1 cosine. */
@@ -96,7 +106,9 @@ export function createMatchingService(ports: MatchingPorts): MatchingService {
       const hem = hemForProfile(listing, profile);
       const ageDays = Math.max(0, (nowMs - listing.lastSeenAt) / 86_400_000);
       const decay = freshnessDecay(ageDays, halfLifeDaysForSource(listing.sourceId));
-      const sim = similarity.score(profile.styleTags, attributeVectorOf(listing));
+      const vector =
+        (listing as CandidateWithVector).attributeVector ?? attributeVectorOf(listing);
+      const sim = similarity.score(profile.styleTags, vector);
       const boost = paletteBoost(profile.palette, listing.colors);
       return {
         listing,

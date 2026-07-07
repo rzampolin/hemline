@@ -8,10 +8,10 @@
  * override afterwards).
  */
 import { ColorAnalysisQuizRequestSchema } from '@hemline/contracts';
+import { classifyFromQuiz } from '@hemline/ai';
 import { setColorSeason } from '@hemline/db';
 import { getDb } from '../../lib/db';
 import { fail, ok, serverError, zodFail } from '../../lib/envelope';
-import { classifyQuizStubTolerant } from '../../lib/color';
 import { requireUserId } from '../../lib/session';
 
 export const runtime = 'nodejs';
@@ -31,7 +31,10 @@ export async function POST(req: Request) {
     const parsed = ColorAnalysisQuizRequestSchema.safeParse(body);
     if (!parsed.success) return zodFail(parsed.error);
 
-    const result = await classifyQuizStubTolerant(parsed.data.answers);
+    // Pure scoring table in packages/ai — deterministic, no LLM (§7.4 step 4).
+    // Result carries source:'quiz' (additive contract field): its `measured`
+    // values are synthesized, not sampled.
+    const result = classifyFromQuiz(parsed.data.answers);
     setColorSeason(db, userId, result.season, result.palette);
     return ok(result);
   } catch (err) {
