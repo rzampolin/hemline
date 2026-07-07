@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { loadFixtureEntries, type FixtureEntry } from '@hemline/connectors';
 import { createDb } from './client';
+import { DEMO_USER_ID } from './constants';
 import {
   extractions,
   ingestRuns,
@@ -50,14 +51,22 @@ export function contentHashFor(e: {
     .digest('hex');
 }
 
-export const DEMO_USER_ID = '00000000-0000-4000-8000-000000000001';
+export { DEMO_USER_ID } from './constants';
 
-function seed() {
+/**
+ * Seed the given db file (defaults to $DATABASE_PATH relative to the repo
+ * root, else <repo>/data/hemline.db). Exported so tests can seed a temp db
+ * (`runSeed(tmpPath)`); running this file directly (`npm run db:seed`) still
+ * seeds in place. Tables must already exist (drizzle-kit push or ensureSchema).
+ */
+export function runSeed(dbPathArg?: string): { dbPath: string; listingCount: number } {
   // Resolve the default db path relative to the repo root so the script works
   // from any cwd (npm -w changes cwd to the workspace dir).
-  const dbPath = process.env.DATABASE_PATH
-    ? path.resolve(REPO_ROOT, process.env.DATABASE_PATH)
-    : path.join(REPO_ROOT, 'data', 'hemline.db');
+  const dbPath =
+    dbPathArg ??
+    (process.env.DATABASE_PATH
+      ? path.resolve(REPO_ROOT, process.env.DATABASE_PATH)
+      : path.join(REPO_ROOT, 'data', 'hemline.db'));
   const db = createDb({ dbPath });
 
   const entries: FixtureEntry[] = loadFixtureEntries();
@@ -236,6 +245,12 @@ function seed() {
   console.log(
     `[seed] loaded ${entries.length} listings, ${imageCount} images, ${entries.length} extractions, 2 sources, 1 demo user, 30 swipes`,
   );
+  return { dbPath, listingCount: entries.length };
 }
 
-seed();
+// Self-execute only when run as a script (tsx packages/db/src/seed.ts),
+// not when imported by tests/route code.
+const isMain =
+  process.argv[1] != null &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) runSeed();
