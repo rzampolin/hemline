@@ -10,12 +10,12 @@
  * Freshness offsets (lastSeenHoursAgo/firstSeenDaysAgo) are converted to
  * epoch ms at seed time so the demo feed always looks fresh.
  */
-import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { loadFixtureEntries, type FixtureEntry } from '@hemline/connectors';
 import { createDb } from './client';
 import { DEMO_USER_ID } from './constants';
+import { contentHashFor } from './content-hash';
 import {
   extractions,
   ingestRuns,
@@ -30,28 +30,9 @@ import {
 
 const REPO_ROOT = path.resolve(fileURLToPath(import.meta.url), '../../../..');
 
-/** content_hash = sha256(title|desc|price|images|sizes) — doc §7.2 */
-export function contentHashFor(e: {
-  title: string;
-  description?: string;
-  priceCents: number;
-  imageUrls: string[];
-  sizeLabels: string[];
-}): string {
-  return createHash('sha256')
-    .update(
-      [
-        e.title,
-        e.description ?? '',
-        String(e.priceCents),
-        e.imageUrls.join(','),
-        e.sizeLabels.join(','),
-      ].join('|'),
-    )
-    .digest('hex');
-}
-
 export { DEMO_USER_ID } from './constants';
+// Back-compat re-export; the canonical home is ./content-hash (side-effect-free).
+export { contentHashFor } from './content-hash';
 
 /**
  * Seed the given db file (defaults to $DATABASE_PATH relative to the repo

@@ -10,3 +10,4 @@ export * from './swipes';
 export * from './saves';
 export * from './alerts';
 export * from './admin';
+export * from './ai-cache';

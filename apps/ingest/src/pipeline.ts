@@ -12,7 +12,6 @@
  * Health bookkeeping: one ingest_runs row per run + sources.last_run_at, read
  * by the backend admin endpoint (product spec G1).
  */
-import { createHash } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 import {
   RawListingSchema,
@@ -22,7 +21,14 @@ import {
   type SourceConnector,
 } from '@hemline/contracts';
 import { createEtagCache } from '@hemline/connectors';
-import { ingestRuns, listingImages, listings, sources, type Db } from '@hemline/db';
+import {
+  contentHashFor,
+  ingestRuns,
+  listingImages,
+  listings,
+  sources,
+  type Db,
+} from '@hemline/db';
 import { buildPendingExtractionInputs, runExtraction } from './extraction';
 import { pruneStale } from './freshness';
 
@@ -61,28 +67,9 @@ export const consoleLogger: Logger = {
   error: (...a) => console.error(...a),
 };
 
-/** content_hash = sha256(title|desc|price|images|sizes) — doc §7.2.
- * (Same recipe as packages/db/src/seed.ts, which cannot be imported: it runs
- * the seed on import.) */
-export function contentHashFor(e: {
-  title: string;
-  description?: string;
-  priceCents: number;
-  imageUrls: string[];
-  sizeLabels: string[];
-}): string {
-  return createHash('sha256')
-    .update(
-      [
-        e.title,
-        e.description ?? '',
-        String(e.priceCents),
-        e.imageUrls.join(','),
-        e.sizeLabels.join(','),
-      ].join('|'),
-    )
-    .digest('hex');
-}
+// Re-exported for tests/back-compat; the canonical recipe now lives in
+// @hemline/db/src/content-hash.ts (decisions-data-eng.md #8 resolved).
+export { contentHashFor } from '@hemline/db';
 
 function ensureSourceRow(
   db: Db,

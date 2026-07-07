@@ -121,6 +121,25 @@ const STATEMENTS = [
     created_at   INTEGER NOT NULL,
     expires_at   INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS pending_alerts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT NOT NULL,
+    listing_id  TEXT,
+    search_json TEXT,
+    kind        TEXT NOT NULL,
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL,
+    UNIQUE (user_id, listing_id, kind)
+  )`,
+  `CREATE TABLE IF NOT EXISTS extraction_corrections (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    content_hash  TEXT NOT NULL,
+    listing_id    TEXT NOT NULL,
+    patch_json    TEXT NOT NULL,
+    previous_json TEXT NOT NULL,
+    corrected_at  INTEGER NOT NULL
+  )`,
 ];
 
 /** Create all core tables/indexes if absent. Idempotent. */

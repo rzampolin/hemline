@@ -8,7 +8,7 @@
  */
 import { and, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import type { Db } from '../client';
-import { extractions, ingestRuns, listings, sources } from '../schema';
+import { extractionCorrections, extractions, ingestRuns, listings, sources } from '../schema';
 
 // ── G1: ingestion health ────────────────────────────────────────────────
 
@@ -234,27 +234,11 @@ export interface ExtractionCorrection {
   confidence?: number;
 }
 
-let correctionsEnsured = new WeakSet<object>();
-
-function ensureCorrectionTable(db: Db): void {
-  if (correctionsEnsured.has(db as object)) return;
-  db.run(
-    sql.raw(`CREATE TABLE IF NOT EXISTS extraction_corrections (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      content_hash  TEXT NOT NULL,
-      listing_id    TEXT NOT NULL,
-      patch_json    TEXT NOT NULL,
-      previous_json TEXT NOT NULL,
-      corrected_at  INTEGER NOT NULL
-    )`),
-  );
-  correctionsEnsured.add(db as object);
-}
-
 /**
  * Apply a manual correction (spec G2): update the extraction in place, stamp
- * model='manual' (re-ingest must not clobber — integration note), keep a
- * correction log row for prompt-tuning.
+ * model='manual' (re-ingest skips these — see apps/ingest extraction.ts), keep
+ * a correction log row for prompt-tuning. `extraction_corrections` is a real
+ * schema table since integration (2026-07-06).
  */
 export function applyExtractionCorrection(
   db: Db,
@@ -267,7 +251,6 @@ export function applyExtractionCorrection(
     .where(eq(extractions.contentHash, contentHash))
     .get();
   if (!existing) return null;
-  ensureCorrectionTable(db);
 
   const set: Partial<typeof extractions.$inferInsert> = { model: 'manual' };
   if (patch.lengthClass !== undefined) set.lengthClass = patch.lengthClass;
@@ -291,10 +274,15 @@ export function applyExtractionCorrection(
   if (patch.confidence !== undefined) set.extractionConfidence = patch.confidence;
 
   db.update(extractions).set(set).where(eq(extractions.contentHash, contentHash)).run();
-  db.run(sql`
-    INSERT INTO extraction_corrections (content_hash, listing_id, patch_json, previous_json, corrected_at)
-    VALUES (${contentHash}, ${existing.listingId}, ${JSON.stringify(patch)}, ${JSON.stringify(existing)}, ${Date.now()})
-  `);
+  db.insert(extractionCorrections)
+    .values({
+      contentHash,
+      listingId: existing.listingId,
+      patchJson: JSON.stringify(patch),
+      previousJson: JSON.stringify(existing),
+      correctedAt: Date.now(),
+    })
+    .run();
 
   return getExtractionQaRow(db, contentHash);
 }
@@ -337,9 +325,4 @@ export function getExtractionQaRow(db: Db, contentHash: string): ExtractionQaRow
     rawTitle: l.title,
     rawDescription: l.description ?? null,
   };
-}
-
-/** test hook */
-export function __resetCorrectionTableCache(): void {
-  correctionsEnsured = new WeakSet<object>();
 }

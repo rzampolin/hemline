@@ -1,14 +1,12 @@
 /**
  * Pending alerts (spec F4 — stub only, NO email sending).
  *
- * The core schema (ARCHITECTURE §3) has no `pending_alerts` table and schema
- * changes are frozen this week, so this repo materializes an auxiliary table
- * lazily via CREATE TABLE IF NOT EXISTS. Flagged as a schema-change request
- * in docs/decisions-backend-eng.md so it graduates into schema.ts +
- * drizzle-kit at the next 4-party review.
+ * `pending_alerts` was adopted into schema.ts + ddl.ts at integration
+ * (2026-07-06); the lazy CREATE TABLE from the schema-freeze week is gone.
  */
-import { sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { Db } from '../client';
+import { pendingAlerts } from '../schema';
 
 export type AlertKind = 'price_drop' | 'low_stock' | 'new_matches';
 
@@ -23,95 +21,57 @@ export interface PendingAlert {
   updatedAt: number;
 }
 
-let ensured = new WeakSet<object>();
-
-export function ensureAlertTable(db: Db): void {
-  if (ensured.has(db as object)) return;
-  db.run(
-    sql.raw(`CREATE TABLE IF NOT EXISTS pending_alerts (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id     TEXT NOT NULL,
-      listing_id  TEXT,
-      search_json TEXT,
-      kind        TEXT NOT NULL,
-      enabled     INTEGER NOT NULL DEFAULT 1,
-      created_at  INTEGER NOT NULL,
-      updated_at  INTEGER NOT NULL,
-      UNIQUE (user_id, listing_id, kind)
-    )`),
-  );
-  ensured.add(db as object);
-}
-
 /** Upsert the toggle for (user, listing, kind). Returns the stored row. */
 export function toggleAlert(
   db: Db,
   userId: string,
   opts: { listingId?: string | null; searchJson?: string | null; kind: AlertKind; enabled: boolean },
 ): PendingAlert {
-  ensureAlertTable(db);
   const now = Date.now();
+  const listingId = opts.listingId ?? null;
+  // Raw upsert: SQLite UNIQUE treats NULL listing_id as distinct, matching the
+  // pre-adoption behavior for search-level alerts.
   db.run(sql`
     INSERT INTO pending_alerts (user_id, listing_id, search_json, kind, enabled, created_at, updated_at)
-    VALUES (${userId}, ${opts.listingId ?? null}, ${opts.searchJson ?? null}, ${opts.kind}, ${opts.enabled ? 1 : 0}, ${now}, ${now})
+    VALUES (${userId}, ${listingId}, ${opts.searchJson ?? null}, ${opts.kind}, ${opts.enabled ? 1 : 0}, ${now}, ${now})
     ON CONFLICT (user_id, listing_id, kind)
     DO UPDATE SET enabled = ${opts.enabled ? 1 : 0}, search_json = coalesce(${opts.searchJson ?? null}, search_json), updated_at = ${now}
   `);
-  const row = db.get<{
-    id: number;
-    user_id: string;
-    listing_id: string | null;
-    search_json: string | null;
-    kind: AlertKind;
-    enabled: number;
-    created_at: number;
-    updated_at: number;
-  }>(sql`
-    SELECT * FROM pending_alerts
-    WHERE user_id = ${userId} AND listing_id IS ${opts.listingId ?? null} AND kind = ${opts.kind}
-  `);
+  const row = db
+    .select()
+    .from(pendingAlerts)
+    .where(
+      and(
+        eq(pendingAlerts.userId, userId),
+        listingId === null ? sql`${pendingAlerts.listingId} IS NULL` : eq(pendingAlerts.listingId, listingId),
+        eq(pendingAlerts.kind, opts.kind),
+      ),
+    )
+    .orderBy(desc(pendingAlerts.updatedAt))
+    .get();
   if (!row) throw new Error('alert upsert failed');
   return mapRow(row);
 }
 
 export function listAlerts(db: Db, userId: string): PendingAlert[] {
-  ensureAlertTable(db);
-  const rows = db.all<{
-    id: number;
-    user_id: string;
-    listing_id: string | null;
-    search_json: string | null;
-    kind: AlertKind;
-    enabled: number;
-    created_at: number;
-    updated_at: number;
-  }>(sql`SELECT * FROM pending_alerts WHERE user_id = ${userId} ORDER BY created_at DESC`);
-  return rows.map(mapRow);
+  return db
+    .select()
+    .from(pendingAlerts)
+    .where(eq(pendingAlerts.userId, userId))
+    .orderBy(desc(pendingAlerts.createdAt))
+    .all()
+    .map(mapRow);
 }
 
-function mapRow(r: {
-  id: number;
-  user_id: string;
-  listing_id: string | null;
-  search_json: string | null;
-  kind: AlertKind;
-  enabled: number;
-  created_at: number;
-  updated_at: number;
-}): PendingAlert {
+function mapRow(r: typeof pendingAlerts.$inferSelect): PendingAlert {
   return {
     id: r.id,
-    userId: r.user_id,
-    listingId: r.listing_id,
-    searchJson: r.search_json,
-    kind: r.kind,
-    enabled: !!r.enabled,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
+    userId: r.userId,
+    listingId: r.listingId ?? null,
+    searchJson: r.searchJson ?? null,
+    kind: r.kind as AlertKind,
+    enabled: r.enabled,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
   };
-}
-
-/** test hook */
-export function __resetAlertTableCache(): void {
-  ensured = new WeakSet<object>();
 }

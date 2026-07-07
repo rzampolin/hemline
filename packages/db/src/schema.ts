@@ -213,3 +213,33 @@ export const rerankCache = sqliteTable('rerank_cache', {
   /** ~24h TTL */
   expiresAt: integer('expires_at').notNull(),
 });
+
+// ── Aux tables (adopted 2026-07-06 from lazy CREATEs in query/{alerts,admin}) ──
+
+/** Spec F4: alert toggles are stored, never sent (no email infra). */
+export const pendingAlerts = sqliteTable(
+  'pending_alerts',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: text('user_id').notNull(),
+    listingId: text('listing_id'),
+    /** serialized saved-search filters for kind='new_matches' */
+    searchJson: text('search_json'),
+    /** price_drop | low_stock | new_matches */
+    kind: text('kind').notNull(),
+    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [unique().on(t.userId, t.listingId, t.kind)],
+);
+
+/** Spec G2: manual extraction-correction log (prompt-tuning audit trail). */
+export const extractionCorrections = sqliteTable('extraction_corrections', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  contentHash: text('content_hash').notNull(),
+  listingId: text('listing_id').notNull(),
+  patchJson: text('patch_json').notNull(),
+  previousJson: text('previous_json').notNull(),
+  correctedAt: integer('corrected_at').notNull(),
+});
