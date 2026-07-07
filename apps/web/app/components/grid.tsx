@@ -33,13 +33,15 @@ export function ListingGrid({
 
   return (
     <ul className="grid grid-cols-2 gap-x-3 gap-y-6 lg:grid-cols-3 xl:grid-cols-4">
-      {items.map(({ listing, hem }) => {
+      {items.map((item) => {
+        const { listing, hem } = item;
+        // server-computed flag (additive RankedListing.paletteMatch) wins;
+        // client color math remains as the mock-mode fallback
+        const matches =
+          item.paletteMatch ??
+          (paletteFamilies.size > 0 && listing.colors.some((c) => paletteFamilies.has(c.family)));
         const paletteMatch =
-          showPaletteChips &&
-          paletteBoost &&
-          paletteFamilies.size > 0 &&
-          !dismissedLocal.includes(listing.id) &&
-          listing.colors.some((c) => paletteFamilies.has(c.family));
+          showPaletteChips && paletteBoost && !dismissedLocal.includes(listing.id) && matches;
         return (
           <li key={listing.id}>
             <ProductCard

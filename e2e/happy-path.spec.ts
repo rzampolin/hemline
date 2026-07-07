@@ -1,6 +1,7 @@
 /**
- * Happy path (mock mode): landing → quiz completion → swipe calibration →
- * feed renders cards with hem badges → detail (hem module + affiliate CTA)
+ * Happy path (mode-agnostic — real seeded API in the default config, mock
+ * layer in the smoke variant): landing → quiz completion → swipe calibration
+ * → feed renders cards with hem badges → detail (hem module + affiliate CTA)
  * → save → My Rack. Screenshots land in e2e/screenshots/.
  */
 import { test, expect, type Page } from '@playwright/test';

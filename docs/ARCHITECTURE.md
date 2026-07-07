@@ -545,7 +545,9 @@ r = hemAboveFloor / H_eff   # normalized hem height, unitless → bands are heig
 | 0.03 < r ≤ 0.12 | `ankle` | ankle ≈ 0.039 H + margin |
 | r ≤ 0.03 | `floor` | |
 
-Because bands are fractions of *her* height, the same 44″ dress correctly classifies as `mid_calf` on a 5'2″ user (r=0.135) and `below_knee`→`knee` on a 5'10″ user (r=0.216) — this is the product's core demo moment.
+Because bands are fractions of *her* height, the same 44″ dress correctly classifies as `ankle` on a 5'2″ user (hem = 0.82×62 − 44 = 6.84″ above floor, r = 6.84/62 = 0.110) and `mid_calf` on a 5'10″ user (hem = 13.4″, r = 13.4/70 = 0.191) — this is the product's core demo moment.
+
+> **Worked-example correction (2026-07-06 integration):** the original example computed r as hem/S instead of the normative hem/H_eff and reported `mid_calf` / `below_knee`→`knee`. Both packages/matching and the frontend hem mirror implement the formula as written above (r = hemAboveFloor / H_eff) — the formula is normative, the old example numbers were wrong. See docs/decisions-integration.md.
 
 ### Fallbacks & confidence
 

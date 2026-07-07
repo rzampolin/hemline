@@ -23,6 +23,7 @@
     "seed": "npm run db:migrate && npm run db:seed",
     "test": "vitest run",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:e2e:mock": "playwright test --config e2e/playwright.mock.config.ts",
     "test:live": "echo 'test:live \u2014 not yet implemented (ai-eng: live API smoke tests, skipped without ANTHROPIC_API_KEY)'",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",

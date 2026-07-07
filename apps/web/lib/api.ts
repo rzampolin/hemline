@@ -16,6 +16,8 @@ import type {
   MetaFiltersResponse,
   ProfilePatch,
   RankedListing,
+  RankResponse,
+  SwipeEvent,
   SwipesPost,
   SwipesPostResponse,
   UserProfile,
@@ -88,16 +90,15 @@ export const api = {
   },
 
   /**
-   * Feed + search + deck all go through rank. `filters.sources` is a mock-only
-   * extension (HardFilters lacks a source facet — flagged to architect); the
-   * live path strips it so requests stay contract-exact.
+   * Feed + search + deck all go through rank. `filters.sources` is now a real
+   * (additive) HardFilters facet — the backend expands the 'resale' | 'brand'
+   * aliases into source ids, so the live path sends it through untouched.
    */
   rank(req: FeedRankRequest) {
     if (MOCK_MODE) return mockRank(req);
-    const { sources: _sources, ...filters } = req.filters;
-    return http<import('@hemline/contracts').RankResponse>('/api/rank', {
+    return http<RankResponse>('/api/rank', {
       method: 'POST',
-      body: JSON.stringify({ ...req, filters }),
+      body: JSON.stringify(req),
     });
   },
 
@@ -134,11 +135,15 @@ export const api = {
   },
 
   /**
-   * Saved items ("My Rack"). No GET endpoint exists in the contract (friction
-   * note — F1 needs one); both modes hydrate saved ids kept client-side
-   * through the detail endpoint, so this works identically live and mocked.
+   * Saved items ("My Rack", spec F1). Live mode uses the real rack endpoints
+   * (GET/POST /api/saves + DELETE /api/saves/:id) so saves live server-side;
+   * mock mode keeps the localStorage ids + detail hydration.
    */
   async getSaved(): Promise<RankedListing[]> {
+    if (!MOCK_MODE) {
+      const res = await http<{ items: RankedListing[]; staleIds: string[] }>('/api/saves');
+      return res.items;
+    }
     const ids = readLocal<string[]>(KEYS.saved, []);
     const results = await Promise.allSettled(ids.map((id) => api.getListing(id)));
     return results
@@ -152,22 +157,90 @@ export const api = {
       }));
   },
 
+  /** Saved listing ids (rack hydration on session load). */
+  async getSavedIdsRemote(): Promise<string[]> {
+    if (MOCK_MODE) return readLocal<string[]>(KEYS.saved, []);
+    const res = await http<{ items: RankedListing[] }>('/api/saves');
+    return res.items.map((i) => i.listing.id);
+  },
+
+  /** One-tap save (heart). Mock mode records a 'save' swipe for taste parity. */
+  save(listingId: string, context: SwipeEvent['context'] = 'feed'): Promise<unknown> {
+    return MOCK_MODE
+      ? mockPostSwipes([{ listingId, verdict: 'save', context }])
+      : http<{ saved: boolean }>('/api/saves', {
+          method: 'POST',
+          body: JSON.stringify({ listingId, context }),
+        });
+  },
+
+  /** Un-save. Idempotent server-side; a no-op in mock mode (local list rules). */
+  unsave(listingId: string): Promise<unknown> {
+    return MOCK_MODE
+      ? Promise.resolve()
+      : http<{ saved: boolean }>(`/api/saves/${encodeURIComponent(listingId)}`, {
+          method: 'DELETE',
+        });
+  },
+
   /**
-   * "Find dresses like this" (B4). No contract endpoint yet (friction note);
-   * mocked with deterministic attribute similarity. Live mode falls back to a
-   * keyword rank until the vision endpoint lands.
+   * "Find dresses like this" (B4) — live mode hits the real
+   * POST /api/find-similar (multipart photo | JSON { imageUrl | hint });
+   * mock mode keeps the deterministic client-side attribute matcher.
    */
   async similarSearch(input: SimilarSearchInput): Promise<SimilarSearchResult> {
     if (MOCK_MODE) return mockSimilarSearch(input);
-    const results = await api.rank({
-      userId: 'me',
-      filters: input.url ? { query: input.url } : {},
-      limit: 24,
-      personalize: true,
-    });
-    return { inferred: { descriptor: 'similar dresses' }, results };
+
+    let res: FindSimilarResponse;
+    if (input.file) {
+      const form = new FormData();
+      form.append('photo', input.file);
+      res = await http<FindSimilarResponse>('/api/find-similar', { method: 'POST', body: form });
+    } else {
+      const isHttp = input.url != null && /^https?:\/\//i.test(input.url);
+      const body = isHttp
+        ? { imageUrl: input.url }
+        : { hint: input.url ?? input.fileName ?? 'dress' };
+      res = await http<FindSimilarResponse>('/api/find-similar', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    }
+
+    return {
+      inferred: { descriptor: describeAttributes(res.attributes) },
+      results: {
+        items: res.items,
+        nextCursor: null,
+        totalMatched: res.totalMatched,
+        rerank: { mode: 'deterministic', costUsd: null },
+      },
+    };
   },
 };
+
+/* ── find-similar response shape (additive route, not in frozen §4.7) ─────── */
+
+interface FindSimilarResponse {
+  attributes: Record<string, number>;
+  extractionMode: 'live' | 'mock';
+  fallback: 'none' | 'nearest';
+  items: RankedListing[];
+  totalMatched: number;
+}
+
+/** Sparse tag vector → human descriptor ("green, wrap, midi length"). */
+function describeAttributes(vector: Record<string, number>): string {
+  const parts = Object.entries(vector)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([tag]) => {
+      const [kind, value] = tag.split(':');
+      const pretty = (value ?? tag).replace(/_/g, ' ');
+      return kind === 'length' ? `${pretty} length` : pretty;
+    });
+  return parts.length > 0 ? parts.join(', ') : 'similar dresses';
+}
 
 /* ── saved ids (client-side, shared by both modes) ───────────────────────── */
 

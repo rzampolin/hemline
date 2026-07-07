@@ -1,9 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Playwright e2e — runs against the dev server in MOCK MODE
- * (NEXT_PUBLIC_API_MOCK=1): fixture-derived catalog, localStorage profile,
- * fully deterministic, zero keys/DB required. `npm run test:e2e` from root.
+ * Playwright e2e — REAL MODE (integration 2026-07-06): dev server against the
+ * seeded SQLite db, real API routes, keyless AI degradation. This is the
+ * canonical experience (`npm run test:e2e`). The webServer command re-seeds
+ * so runs are deterministic.
+ *
+ * Mock-mode smoke variant: `npm run test:e2e:mock` (playwright.mock.config.ts).
  */
 export default defineConfig({
   testDir: '.',
@@ -23,10 +26,11 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev -w @hemline/web -- --port 3210',
+    command: 'npm run seed && npm run dev -w @hemline/web -- --port 3210',
     url: 'http://localhost:3210',
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-    env: { NEXT_PUBLIC_API_MOCK: '1' },
+    timeout: 180_000,
+    // real mode: NEXT_PUBLIC_API_MOCK unset
+    env: { NEXT_PUBLIC_API_MOCK: '' },
   },
 });

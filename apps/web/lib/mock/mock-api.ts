@@ -376,6 +376,8 @@ export async function mockGetMetaFilters(): Promise<MetaFiltersResponse> {
 /* ── "find dresses like this" (no contract endpoint yet — friction note) ─── */
 
 export interface SimilarSearchInput {
+  /** live mode uploads the actual file (multipart `photo`); mock keys off the name */
+  file?: File;
   fileName?: string;
   url?: string;
 }

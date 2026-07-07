@@ -49,8 +49,17 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       .then((p) => {
         if (cancelled) return;
         setProfile(p);
-        setSaved(getSavedIds());
+        setSaved(getSavedIds()); // instant local echo…
         setBoost(readLocal<boolean>(KEYS.paletteBoost, true));
+        // …then the server rack is authoritative (live mode; mock reads local)
+        api
+          .getSavedIdsRemote()
+          .then((ids) => {
+            if (cancelled) return;
+            setSaved(ids);
+            setSavedIds(ids);
+          })
+          .catch(() => {});
       })
       .catch(() => {
         /* stay in loading-failed state; pages show their own errors */
@@ -78,9 +87,10 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       const has = prev.includes(listingId);
       const next = has ? prev.filter((id) => id !== listingId) : [...prev, listingId];
       setSavedIds(next);
-      if (!has) {
-        void api.postSwipes([{ listingId, verdict: 'save', context }]).catch(() => {});
-      }
+      // real rack endpoints (POST /api/saves, DELETE /api/saves/:id) in live
+      // mode; mock mode records a 'save' swipe so taste learning stays at parity
+      if (has) void api.unsave(listingId).catch(() => {});
+      else void api.save(listingId, context).catch(() => {});
       return next;
     });
   }, []);

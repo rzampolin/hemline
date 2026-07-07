@@ -19,7 +19,7 @@ export default function SimilarPage() {
   const [preview, setPreview] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const run = async (input: { fileName?: string; url?: string }) => {
+  const run = async (input: { file?: File; fileName?: string; url?: string }) => {
     setPhase('analyzing');
     try {
       const res = await api.similarSearch(input);
@@ -33,7 +33,8 @@ export default function SimilarPage() {
   const onFile = (f: File | undefined) => {
     if (!f) return;
     setPreview(URL.createObjectURL(f));
-    void run({ fileName: f.name });
+    // live mode uploads the bytes (analyzed then discarded); mock keys off the name
+    void run({ file: f, fileName: f.name });
   };
 
   return (

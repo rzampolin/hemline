@@ -60,6 +60,11 @@ export default function DressDetailPage() {
 
   const whyItWorks = useMemo(() => {
     if (!data || !profile) return null;
+    // Prefer the server-composed line (additive ListingDetailResponse field —
+    // templated keyless, Haiku when live). Client fallback covers mock mode.
+    if (data.whyItWorks !== undefined) {
+      return data.whyItWorks ? `Why it works for you: ${data.whyItWorks}` : null;
+    }
     const bits: string[] = [];
     if (data.hem.position && profile.lengthPrefs.includes(data.hem.position)) {
       bits.push(`it lands ${data.hem.position.replace('_', ' ')} on you — a length you asked for`);

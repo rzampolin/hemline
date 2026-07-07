@@ -1,11 +1,13 @@
 /**
- * Color quiz fallback (mock mode): manual quiz → season result → confirm →
- * palette saved to profile → feed shows the removable palette boost chip.
+ * Color quiz fallback (mode-agnostic — runs against the real API in the
+ * default config, mock layer in the smoke variant): manual quiz → season
+ * result → confirm → palette saved to profile → feed shows the removable
+ * palette boost chip.
  */
 import { test, expect } from '@playwright/test';
 
 test('color quiz fallback → palette on profile → boost chip in feed', async ({ page }) => {
-  // needs an onboarded-ish profile so the feed renders normally
+  // fresh browser context = fresh anonymous session in both modes
   await page.goto('/');
   await page.evaluate(() => window.localStorage.clear());
 
@@ -14,11 +16,12 @@ test('color quiz fallback → palette on profile → boost chip in feed', async 
   await page.getByTestId('quiz-fallback').click();
 
   await expect(page).toHaveURL(/\/color-analysis\/quiz/);
-  // warm + deep answers → an autumn season, deterministically
+  // warm + deep answers → dark autumn in BOTH scoring tables (real quiz table
+  // in packages/ai and the mock layer), deterministically
   await page.getByRole('button', { name: 'Green or olive' }).click();
   await page.getByRole('button', { name: 'Gold', exact: true }).click();
   await page.getByRole('button', { name: /Soft cream/ }).click();
-  await page.getByRole('button', { name: 'Tans easily' }).click();
+  await page.getByRole('button', { name: 'Almost never burns' }).click();
   await page.getByRole('button', { name: 'Dark brown', exact: true }).click();
   await page.getByRole('button', { name: 'Brown', exact: true }).click();
 
