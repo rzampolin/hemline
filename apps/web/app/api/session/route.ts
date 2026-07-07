@@ -1,18 +1,26 @@
 /**
- * GET /api/session — mints anonymous user + cookie on first hit → UserProfile.
- * docs/ARCHITECTURE.md §4.7. 501 stub showing the response envelope pattern.
- * TODO(backend-eng): signed httpOnly cookie (SESSION_SECRET) → users row.
+ * GET /api/session — mints anonymous user + signed httpOnly cookie on first
+ * hit → UserProfile (ARCHITECTURE §4.7, spec A2 local-first profile).
+ * Accepts the client's localStorage UUID via `x-hemline-user-id` and adopts it.
  */
-import { NextResponse } from 'next/server';
-import type { ApiResponse, UserProfile } from '@hemline/contracts';
+import { getUserProfile } from '@hemline/db';
+import { getDb } from '../lib/db';
+import { ok, serverError } from '../lib/envelope';
+import { attachSessionCookie, ensureSessionUser } from '../lib/session';
 
-export async function GET() {
-  const body: ApiResponse<UserProfile> = {
-    ok: false,
-    error: {
-      code: 'not_implemented',
-      message: 'backend-eng: implement session minting — docs/ARCHITECTURE.md §4.7',
-    },
-  };
-  return NextResponse.json(body, { status: 501 });
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+export async function GET(req: Request) {
+  try {
+    const db = getDb();
+    const { userId, isNew } = ensureSessionUser(req, db);
+    const profile = getUserProfile(db, userId);
+    if (!profile) return serverError('session', new Error('profile missing after mint'));
+    const res = ok(profile);
+    if (isNew) attachSessionCookie(res, userId);
+    return res;
+  } catch (err) {
+    return serverError('session', err);
+  }
 }
