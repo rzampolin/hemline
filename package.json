@@ -2,7 +2,7 @@
   "name": "hemline",
   "private": true,
   "version": "0.1.0",
-  "description": "Personal dress-shopping assistant — finds dresses that fit your style, color season, size, and actual hem position for your height.",
+  "description": "Personal dress-shopping assistant \u2014 finds dresses that fit your style, color season, size, and actual hem position for your height.",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -22,14 +22,15 @@
     "db:studio": "drizzle-kit studio",
     "seed": "npm run db:migrate && npm run db:seed",
     "test": "vitest run",
-    "test:e2e": "echo 'test:e2e — not yet implemented (frontend-eng: Playwright specs live in e2e/)'",
-    "test:live": "echo 'test:live — not yet implemented (ai-eng: live API smoke tests, skipped without ANTHROPIC_API_KEY)'",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:live": "echo 'test:live \u2014 not yet implemented (ai-eng: live API smoke tests, skipped without ANTHROPIC_API_KEY)'",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",
+    "@playwright/test": "^1.61.1",
     "@types/node": "^24.0.0",
     "drizzle-kit": "^0.31.0",
     "eslint": "^9.20.0",

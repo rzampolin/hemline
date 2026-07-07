@@ -1,21 +1,38 @@
 import type { Metadata, Viewport } from 'next';
+import { Fraunces, Inter } from 'next/font/google';
+import { ProfileProvider } from '../lib/profile-store';
 import './globals.css';
+
+const fraunces = Fraunces({
+  subsets: ['latin'],
+  variable: '--font-fraunces',
+  display: 'swap',
+});
+
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Hemline — dresses that actually fit',
   description:
-    'Dresses that actually fit — your size, your height, your colors. Resale + DTC brands, with honest hem predictions for your body.',
+    'Dresses that actually fit — your size, your height, your colors. Resale + brand sites, with honest hem predictions for your body.',
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  themeColor: '#faf6ef',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-dvh bg-stone-50 text-stone-900 antialiased">{children}</body>
+    <html lang="en" className={`${fraunces.variable} ${inter.variable}`}>
+      <body className="min-h-dvh bg-cream font-sans text-ink antialiased">
+        <ProfileProvider>{children}</ProfileProvider>
+      </body>
     </html>
   );
 }

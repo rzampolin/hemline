@@ -20,3 +20,7 @@ data/*
 # misc
 .DS_Store
 coverage/
+
+# playwright artifacts (screenshots are committed deliverables)
+e2e/test-results/
+playwright-report/
