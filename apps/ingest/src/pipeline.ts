@@ -30,6 +30,7 @@ import {
   sources,
   type Db,
 } from '@hemline/db';
+import { embedMissingForSources, type EmbedOnIngestDeps } from './embedding';
 import { buildPendingExtractionInputs, runExtraction } from './extraction';
 import { pruneStale } from './freshness';
 
@@ -43,6 +44,8 @@ export interface PipelineStats {
   pruned: number;
   extracted: number;
   extractionPending: number;
+  /** vectors written by the embed-on-ingest step (0 when skipped/disabled) */
+  embedded: number;
   mock: boolean;
 }
 
@@ -58,6 +61,10 @@ export interface PipelineOptions {
   now?: number;
   /** skip the extraction hand-off (tests / --no-extract) */
   extract?: boolean;
+  /** skip the embed-on-ingest step (tests / --no-embed) — mirrors `extract` */
+  embed?: boolean;
+  /** test seams for the embed step (real sidecar by default) */
+  embedDeps?: EmbedOnIngestDeps;
   /** skip the 2×cadence staleness pass */
   prune?: boolean;
 }
@@ -117,6 +124,7 @@ export async function runPipeline(
     pruned: 0,
     extracted: 0,
     extractionPending: 0,
+    embedded: 0,
     mock: mockMode,
   };
 
@@ -309,8 +317,26 @@ export async function runPipeline(
     }
   }
 
+  // ── embed-on-ingest (fire-safe; skips with one info line when ML absent) ─
+  if (opts.embed !== false) {
+    try {
+      const outcome = await embedMissingForSources(db, affectedSourceIds, logger, opts.embedDeps);
+      stats.embedded = outcome.embedded;
+      if (outcome.skipped === null && (outcome.embedded > 0 || outcome.failed > 0)) {
+        logger.info(
+          `[ingest:${connector.id}] embed-on-ingest: ${outcome.embedded} vector(s) written, ${outcome.failed} failed (retried by the next run / npm run embed)`,
+        );
+      }
+    } catch (e) {
+      // never fail ingest over embeddings — `npm run embed` backfills anytime
+      logger.warn(
+        `[ingest:${connector.id}] embed-on-ingest unavailable — skipped: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
   logger.info(
-    `[ingest:${connector.id}] ${mockMode ? '[MOCK] ' : ''}fetched=${stats.fetched} new=${stats.new} updated=${stats.updated} unchanged=${stats.unchanged} removed=${stats.removed} pruned=${stats.pruned} errors=${stats.errors} extraction: ${stats.extracted} done / ${stats.extractionPending} pending`,
+    `[ingest:${connector.id}] ${mockMode ? '[MOCK] ' : ''}fetched=${stats.fetched} new=${stats.new} updated=${stats.updated} unchanged=${stats.unchanged} removed=${stats.removed} pruned=${stats.pruned} errors=${stats.errors} extraction: ${stats.extracted} done / ${stats.extractionPending} pending, embedded=${stats.embedded}`,
   );
   return finalize('ok');
 }

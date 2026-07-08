@@ -54,7 +54,8 @@ beforeEach(() => ({ db, cleanup } = createTestDb()));
 afterEach(() => cleanup());
 
 // prune disabled: fixture seenAt values are tiny epochs that would instantly stale out
-const opts = { logger: silent, extract: false, prune: false } as const;
+// embed disabled: these tests cover upsert semantics — embed-on-ingest has its own suite
+const opts = { logger: silent, extract: false, embed: false, prune: false } as const;
 
 describe('runPipeline upsert semantics', () => {
   it('inserts new listings with images and records run + source bookkeeping', async () => {

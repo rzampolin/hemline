@@ -1,5 +1,5 @@
 /**
- * One-shot ingest — `npm run ingest [-- --source=<id|kind> --store=<domain> --watch --no-extract]`.
+ * One-shot ingest — `npm run ingest [-- --source=<id|kind> --store=<domain> --watch --no-extract --no-embed]`.
  *
  *   npm run ingest                                # all: fixtures + ebay (+mock) + verified Shopify stores
  *   npm run ingest -- --source=fixtures           # one kind
@@ -34,7 +34,7 @@ async function main(): Promise<void> {
       continue;
     }
     try {
-      const result = await runPipeline(db, connector, { extract: args.extract });
+      const result = await runPipeline(db, connector, { extract: args.extract, embed: args.embed });
       results.push({ id: connector.id, result });
     } catch (e) {
       // runPipeline isolates internally; this is the belt to its braces

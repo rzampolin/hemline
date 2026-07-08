@@ -35,6 +35,7 @@ export interface CliArgs {
   store?: string;
   watch: boolean;
   extract: boolean;
+  embed: boolean;
 }
 
 export function parseArgs(argv: string[]): CliArgs {
@@ -45,6 +46,7 @@ export function parseArgs(argv: string[]): CliArgs {
     store: get('store'),
     watch: argv.includes('--watch'),
     extract: !argv.includes('--no-extract'),
+    embed: !argv.includes('--no-embed'),
   };
 }
 

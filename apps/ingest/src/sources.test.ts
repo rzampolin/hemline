@@ -51,6 +51,11 @@ describe('parseArgs', () => {
       store: 'lulus.com',
       watch: true,
       extract: false,
+      embed: true, // --no-embed not passed
     });
+  });
+
+  it('parses --no-embed (mirrors --no-extract)', () => {
+    expect(parseArgs(['--no-embed'])).toMatchObject({ extract: true, embed: false });
   });
 });

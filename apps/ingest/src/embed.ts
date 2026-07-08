@@ -19,23 +19,8 @@ import {
   upsertEmbedding,
 } from '@hemline/db';
 import { EmbedderProcess, resolveEmbedder } from '@hemline/matching/embedder';
-
-/**
- * Placeholder-image hosts are excluded from visual embedding: the fixture
- * corpus hotlinks placehold.co text-on-gray tiles which (a) are served as SVG
- * (PIL can't decode) and (b) would all cluster together and pollute visual
- * search if rasterized. Listings skipped here simply stay on the
- * attribute-vector similarity path.
- */
-const PLACEHOLDER_HOSTS = new Set(['placehold.co', 'via.placeholder.com']);
-
-function isPlaceholderImage(url: string): boolean {
-  try {
-    return PLACEHOLDER_HOSTS.has(new URL(url).hostname);
-  } catch {
-    return true; // unparseable url — nothing to embed
-  }
-}
+// placeholder filter shared with the embed-on-ingest pipeline step
+import { isPlaceholderImage } from './embedding';
 
 function flag(name: string): string | undefined {
   const arg = process.argv.find((a) => a === `--${name}` || a.startsWith(`--${name}=`));

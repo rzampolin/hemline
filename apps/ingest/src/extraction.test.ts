@@ -35,6 +35,7 @@ const emptyStats = () => ({
   coercions: 0,
   fallbacks: 0,
   mockExtractions: 0,
+  imageUrlFailures: 0,
   cacheHits: 0,
 });
 const withStats = (
@@ -92,7 +93,7 @@ async function seedTwoListings(): Promise<void> {
         stats: { fetched: 2, errors: 0 },
       }),
     },
-    { logger: silent, extract: false, prune: false },
+    { logger: silent, extract: false, embed: false, prune: false },
   );
 }
 
@@ -219,7 +220,7 @@ describe('pipeline extraction integration', () => {
           stats: { fetched: 1, errors: 0 },
         }),
       },
-      { logger: silent, prune: false },
+      { logger: silent, embed: false, prune: false },
     );
 
     expect(result.status).toBe('ok'); // extraction failure never fails ingest

@@ -43,7 +43,7 @@ function normalizeSourceId(sourceId?: string): string | undefined {
 export async function runIngestForSource(
   db: Db,
   sourceId?: string,
-  opts: { logger?: Logger; extract?: boolean } = {},
+  opts: { logger?: Logger; extract?: boolean; embed?: boolean } = {},
 ): Promise<IngestRunOutcome> {
   const logger = opts.logger ?? consoleLogger;
   const connectors = buildConnectors({ source: normalizeSourceId(sourceId) });
@@ -55,7 +55,11 @@ export async function runIngestForSource(
       continue;
     }
     try {
-      const result = await runPipeline(db, connector, { logger, extract: opts.extract });
+      const result = await runPipeline(db, connector, {
+        logger,
+        extract: opts.extract,
+        embed: opts.embed,
+      });
       results.push({ connectorId: connector.id, result });
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
@@ -74,6 +78,7 @@ export async function runIngestForSource(
     pruned: 0,
     extracted: 0,
     extractionPending: 0,
+    embedded: 0,
     mock: false,
   };
   for (const r of results) {
@@ -91,6 +96,7 @@ export async function runIngestForSource(
     stats.pruned += s.pruned;
     stats.extracted += s.extracted;
     stats.extractionPending += s.extractionPending;
+    stats.embedded += s.embedded;
     stats.mock = stats.mock || s.mock;
   }
   const anyOk = results.some((r) => r.result?.status === 'ok');

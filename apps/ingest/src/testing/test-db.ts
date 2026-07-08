@@ -81,6 +81,16 @@ const DDL = [
     extracted_at        INTEGER NOT NULL,
     raw_response_json   TEXT
   )`,
+  `CREATE TABLE listing_embeddings (
+    content_hash TEXT NOT NULL,
+    model        TEXT NOT NULL,
+    listing_id   TEXT NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+    dim          INTEGER NOT NULL,
+    vector       BLOB NOT NULL,
+    image_url    TEXT,
+    embedded_at  INTEGER NOT NULL,
+    PRIMARY KEY (content_hash, model)
+  )`,
 ];
 
 export function createTestDb(): { db: Db; cleanup: () => void } {
