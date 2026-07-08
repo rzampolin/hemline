@@ -14,6 +14,12 @@
  * (the same inch thresholds as lengthClassFromInches). A "mini" estimated at
  * 55" is distrusted — we keep the class prior (write NO inches) and flag low
  * confidence; the hem then honestly falls back to basis='length_class_prior'.
+ *
+ * v2 anchoring: when the listing STATES the model's height ("Model is 5'10"
+ * and wears a size S" — parsed by extraction/model-height.ts), the prompt
+ * anchors on that height with linearly scaled body landmarks instead of the
+ * assumed 5'9" default, and the result records which anchor was used
+ * (LengthEstimateResult.anchor / anchorHeightInches).
  */
 import type Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
@@ -36,6 +42,7 @@ export const LENGTH_ESTIMATION_SYSTEM_PROMPT = `You are Hemline's garment-length
 
 Anchor assumptions:
 - Fashion models are typically ~5'9" (175 cm). On such a model, the shoulder line sits ~56-57" above the floor, the knee crease ~19-20" above the floor, mid-calf ~11", the ankle ~3".
+- Some listings state the model's actual height. When the user message includes a "MODEL HEIGHT (stated on the listing)" line, anchor on THAT height and the body landmarks provided with it instead of the defaults above.
 - Read where the hem falls on the model's body (mid-thigh, knee, mid-calf, ankle, floor) and convert to HPS-to-hem inches using those landmarks. Example: a hem at the knee on a 5'9" model is roughly 56 - 19 = 37-39".
 - If the photo is a flat lay or on a mannequin/hanger, estimate from garment proportions if a scale reference exists; otherwise return lengthInches: null with confidence 0.
 - If the photo does not show the full garment (hem cropped out), return lengthInches: null.
@@ -51,6 +58,58 @@ export interface LengthEstimateInput {
   lengthClass: LengthClass | null;
   /** existing extracted attrs worth grounding on (silhouette etc.) — optional */
   silhouette?: string | null;
+  /**
+   * Stated model height parsed from listing text (parseModelInfo), inches.
+   * When present the prompt anchors on THIS height with proportionally scaled
+   * landmarks instead of the assumed 5'9" default.
+   */
+  statedModelHeightInches?: number | null;
+  /** size the model wears, stated on the listing — prompt context only */
+  modelSizeWorn?: string | null;
+}
+
+/** Which model-height anchor grounded a vision estimate. */
+export type LengthAnchor = 'stated_model_height' | 'assumed_default';
+
+/** The v1 anchor: an assumed ~5'9" (69") fashion model. */
+export const DEFAULT_MODEL_HEIGHT_IN = 69;
+
+/**
+ * Floor-relative body landmarks (inches) at the default 69" anchor — the same
+ * numbers the system prompt states (midpoints of its ranges). Scaled linearly
+ * for stated model heights.
+ */
+export const DEFAULT_LANDMARKS_IN = {
+  shoulder: 56.5,
+  knee: 19.5,
+  midCalf: 11,
+  ankle: 3,
+} as const;
+
+export interface BodyLandmarksIn {
+  shoulder: number;
+  knee: number;
+  midCalf: number;
+  ankle: number;
+}
+
+/** Linearly scale the default-anchor landmarks to a stated model height. */
+export function scaleLandmarks(heightInches: number): BodyLandmarksIn {
+  const scale = heightInches / DEFAULT_MODEL_HEIGHT_IN;
+  const s = (v: number) => Math.round(v * scale * 10) / 10;
+  return {
+    shoulder: s(DEFAULT_LANDMARKS_IN.shoulder),
+    knee: s(DEFAULT_LANDMARKS_IN.knee),
+    midCalf: s(DEFAULT_LANDMARKS_IN.midCalf),
+    ankle: s(DEFAULT_LANDMARKS_IN.ankle),
+  };
+}
+
+/** 70 → `5'10"`, 68.9 → `5'8.9"` — for prompt/report readability. */
+export function formatFeetInches(heightInches: number): string {
+  const feet = Math.floor(heightInches / 12);
+  const inches = Math.round((heightInches - feet * 12) * 10) / 10;
+  return `${feet}'${inches}"`;
 }
 
 export interface LengthEstimateResult {
@@ -68,6 +127,10 @@ export interface LengthEstimateResult {
   rawLengthInches: number | null;
   modelConfidence: number;
   reasoning: string | null;
+  /** which model-height anchor grounded (or would ground) this call */
+  anchor: LengthAnchor;
+  /** the anchor height in inches (69 for the assumed default) */
+  anchorHeightInches: number;
   error?: string;
 }
 
@@ -131,6 +194,16 @@ export function buildLengthEstimationUserText(input: LengthEstimateInput): strin
     `MARKETING LENGTH CLASS: ${input.lengthClass ?? 'unknown'}`,
   ];
   if (input.silhouette) lines.push(`SILHOUETTE: ${input.silhouette}`);
+  if (input.statedModelHeightInches != null) {
+    const h = input.statedModelHeightInches;
+    const lm = scaleLandmarks(h);
+    lines.push(
+      `MODEL HEIGHT (stated on the listing): ${h}" (${formatFeetInches(h)}). ` +
+        `Anchor on THIS height — on this model the shoulder line sits ~${lm.shoulder}" above the floor, ` +
+        `the knee ~${lm.knee}", mid-calf ~${lm.midCalf}", the ankle ~${lm.ankle}".`,
+    );
+    if (input.modelSizeWorn) lines.push(`MODEL WEARS SIZE: ${input.modelSizeWorn}`);
+  }
   lines.push('Estimate the HPS-to-hem length in inches from the photo.');
   return lines.join('\n');
 }
@@ -170,6 +243,9 @@ export function createLengthEstimator(options: LengthEstimatorOptions = {}): Len
   };
 
   async function estimateOne(input: LengthEstimateInput): Promise<LengthEstimateResult> {
+    const anchor: LengthAnchor =
+      input.statedModelHeightInches != null ? 'stated_model_height' : 'assumed_default';
+    const anchorHeightInches = input.statedModelHeightInches ?? DEFAULT_MODEL_HEIGHT_IN;
     if (client.effectiveMode() === 'mock') {
       // No deterministic stand-in exists for vision estimates — report failure
       // (safe to retry once a key/budget is available). The CLI stops the run.
@@ -180,6 +256,8 @@ export function createLengthEstimator(options: LengthEstimatorOptions = {}): Len
         rawLengthInches: null,
         modelConfidence: 0,
         reasoning: null,
+        anchor,
+        anchorHeightInches,
         error: client.mode === 'mock' ? 'no ANTHROPIC_API_KEY' : 'daily AI budget exhausted',
       };
     }
@@ -224,6 +302,8 @@ export function createLengthEstimator(options: LengthEstimatorOptions = {}): Len
           rawLengthInches: null,
           modelConfidence,
           reasoning: output.reasoning,
+          anchor,
+          anchorHeightInches,
         };
       }
       const clamped = clampLengthEstimate(output.lengthInches, input.lengthClass);
@@ -239,6 +319,8 @@ export function createLengthEstimator(options: LengthEstimatorOptions = {}): Len
           rawLengthInches: output.lengthInches,
           modelConfidence: Math.min(modelConfidence, 0.2),
           reasoning: output.reasoning,
+          anchor,
+          anchorHeightInches,
         };
       }
       stats.estimated += 1;
@@ -248,6 +330,8 @@ export function createLengthEstimator(options: LengthEstimatorOptions = {}): Len
         rawLengthInches: output.lengthInches,
         modelConfidence,
         reasoning: output.reasoning,
+        anchor,
+        anchorHeightInches,
       };
     } catch (err) {
       stats.failed += 1;
@@ -257,6 +341,8 @@ export function createLengthEstimator(options: LengthEstimatorOptions = {}): Len
         rawLengthInches: null,
         modelConfidence: 0,
         reasoning: null,
+        anchor,
+        anchorHeightInches,
         error: (err as Error).message,
       };
     }
