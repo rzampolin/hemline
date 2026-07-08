@@ -45,6 +45,19 @@
   { "domain": "ajeworld.com", "displayName": "Aje", "verified": true },
   { "domain": "becandbridge.com", "displayName": "Bec + Bridge", "verified": true },
   {
+    "domain": "needleandthread.com",
+    "displayName": "Needle & Thread",
+    "verified": true,
+    "currency": "GBP",
+    "note": "probed 2026-07-07 during JSON-LD candidate research: products.json open (Shopify), ~400 dress URLs in sitemap"
+  },
+  {
+    "domain": "veronicabeard.com",
+    "displayName": "Veronica Beard",
+    "verified": true,
+    "note": "probed 2026-07-07 during JSON-LD candidate research: products.json open (Shopify)"
+  },
+  {
     "domain": "thereformation.com",
     "displayName": "Reformation",
     "verified": false,

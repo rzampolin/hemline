@@ -1,0 +1,134 @@
+[
+  {
+    "domain": "thereformation.com",
+    "displayName": "Reformation",
+    "productUrlPattern": "thereformation\\.com/products/[^/]*dress[^/]*/",
+    "verified": true,
+    "notes": "probed 2026-07-07: SFCC. robots→sitemap_index.xml→sitemap_0-product.xml (~2.9k products, ~1k dress URLs). Per-size Offers with size/color/availability/USD price. Sizes numeric (000–012). Descriptions short; no length text in JSON-LD (AI pipeline estimates from image)."
+  },
+  {
+    "domain": "lulus.com",
+    "displayName": "Lulus",
+    "sitemapUrl": "https://www.lulus.com/products/sitemap.xml",
+    "productUrlPattern": "lulus\\.com/products/.*dress",
+    "verified": true,
+    "notes": "probed 2026-07-07: custom platform. Dedicated products sitemap (~9.3k URLs, ~5.2k dress). Single Offer, USD, no sizes in JSON-LD (sizes live client-side). Long descriptions frequently state lengths/measurements — good hem-text quality. og:image present."
+  },
+  {
+    "domain": "madewell.com",
+    "displayName": "Madewell",
+    "productUrlPattern": "madewell\\.com/p/.*dress",
+    "verified": true,
+    "notes": "probed 2026-07-07: SFCC. sitemap_index→…product.xml (~2.6k products). Single Offer, USD, no sizes in JSON-LD. Dress PDPs carry /dresses-skirts/ category path — downstream dress filter removes the skirts."
+  },
+  {
+    "domain": "whistles.com",
+    "displayName": "Whistles",
+    "currency": "GBP",
+    "productUrlPattern": "whistles\\.com/product/.*dress",
+    "verified": true,
+    "notes": "probed 2026-07-07: SFCC. sitemap_index→sitemap_0.xml (~4.6k URLs, ~900 dress). JSON-LD contains RAW control characters (connector's recovery pass handles it). Single Offer, GBP. Descriptions state explicit garment length (e.g. 'Length: 145cm') + model height — best-in-list hem data. 4+ images."
+  },
+  {
+    "domain": "forloveandlemons.com",
+    "displayName": "For Love & Lemons",
+    "productUrlPattern": "forloveandlemons\\.com/products/.*dress",
+    "priceDivisor": 100,
+    "verified": true,
+    "notes": "probed 2026-07-07: Shopify with products.json disabled — JSON-LD renders. @graph-wrapped Product; per-size offers with size in offer name ('… - XXS / Cream'). THEME BUG: price field is integer cents rendered as dollars (21299.00 for a $212.99 dress) → priceDivisor 100, verified against on-site price."
+  },
+  {
+    "domain": "realisationpar.com",
+    "displayName": "Réalisation Par",
+    "sitemapUrl": "https://realisationpar.com/xmlsitemap.php",
+    "productUrlPattern": "realisationpar\\.com/[^/]+/$",
+    "verified": false,
+    "notes": "probed 2026-07-07: BigCommerce (not Shopify). Sitemap works (xmlsitemap.php index → type=products child, ~190 products; URLs lack 'dress'), but PDPs embed schema.org/Product as MICRODATA only — no JSON-LD. Needs a microdata parser (follow-up)."
+  },
+  {
+    "domain": "houseofcb.com",
+    "displayName": "House of CB",
+    "productUrlPattern": "houseofcb\\.com/.*dress",
+    "verified": false,
+    "notes": "probed 2026-07-07: custom Next.js storefront. No Sitemap: line in robots.txt; /sitemap.xml and common variants serve the SPA homepage HTML. No sitemap → no discovery path."
+  },
+  {
+    "domain": "jcrew.com",
+    "displayName": "J.Crew",
+    "productUrlPattern": "jcrew\\.com/p/womens/.*dress",
+    "verified": false,
+    "notes": "probed 2026-07-07: ProductGroup JSON-LD present but offers/price are server-rendered inconsistently — a girls' PDP had price, the women's dress checked had hasVariant:[] and no offers. Revisit; may work for a subset."
+  },
+  {
+    "domain": "aritzia.com",
+    "displayName": "Aritzia",
+    "sitemapUrl": "https://www.aritzia.com/us/en/sitemap_index.xml",
+    "productUrlPattern": "aritzia\\.com/.*/product/.*dress",
+    "verified": false,
+    "notes": "probed 2026-07-07: Product JSON-LD parsed cleanly on the first PDP hit (price, availability, image), but bot protection started returning 403 after a handful of polite requests. Unreliable for a daily crawl — skip."
+  },
+  {
+    "domain": "ba-sh.com",
+    "displayName": "ba&sh",
+    "sitemapUrl": "https://ba-sh.com/us/en/sitemap-0-product-en_US.xml",
+    "productUrlPattern": "ba-sh\\.com/us/p/dress-",
+    "verified": false,
+    "notes": "probed 2026-07-07: SFCC. US product sitemap works (~1.3k products, dress- URL prefix), but ProductGroup ships hasVariant:[] and no offers server-side — no price in JSON-LD."
+  },
+  {
+    "domain": "zimmermann.com",
+    "displayName": "Zimmermann",
+    "productUrlPattern": "zimmermann\\.com/.*dress",
+    "verified": false,
+    "notes": "probed 2026-07-07: Magento. Locale sitemaps mix category and product URLs with no distinguishing product pattern; the dress-keyword URLs sampled were category pages with zero JSON-LD blocks."
+  },
+  {
+    "domain": "anthropologie.com",
+    "displayName": "Anthropologie",
+    "productUrlPattern": "anthropologie\\.com/shop/.*dress",
+    "verified": false,
+    "notes": "probed 2026-07-07: URBN platform — robots.txt itself returns 403 (bot-blocked). Do not crawl."
+  },
+  {
+    "domain": "freepeople.com",
+    "displayName": "Free People",
+    "productUrlPattern": "freepeople\\.com/shop/.*dress",
+    "verified": false,
+    "notes": "probed 2026-07-07: URBN platform — 403 bot-blocked, same as Anthropologie."
+  },
+  {
+    "domain": "stories.com",
+    "displayName": "& Other Stories",
+    "productUrlPattern": "stories\\.com/.*dress",
+    "verified": false,
+    "notes": "probed 2026-07-07: H&M group — 403 bot-blocked at robots.txt."
+  },
+  {
+    "domain": "shop.mango.com",
+    "displayName": "Mango",
+    "productUrlPattern": "shop\\.mango\\.com/.*dress",
+    "verified": false,
+    "notes": "probed 2026-07-07: 403 bot-blocked at robots.txt."
+  },
+  {
+    "domain": "reiss.com",
+    "displayName": "Reiss",
+    "productUrlPattern": "reiss\\.com/.*/style/",
+    "verified": false,
+    "notes": "probed 2026-07-07: sitemaps reachable (gzipped, per-locale) but PDPs return 403 to bots."
+  },
+  {
+    "domain": "sezane.com",
+    "displayName": "Sézane",
+    "productUrlPattern": "sezane\\.com/.*dress",
+    "verified": false,
+    "notes": "known bot-blocker (403 on 2026-07-06 Shopify-track probe) — skipped by design, no new requests sent."
+  },
+  {
+    "domain": "hellomolly.com",
+    "displayName": "Hello Molly",
+    "productUrlPattern": "hellomolly\\.com/products/.*dress",
+    "verified": false,
+    "notes": "known bot-blocker (403 on 2026-07-06 Shopify-track probe) — skipped by design, no new requests sent."
+  }
+]
