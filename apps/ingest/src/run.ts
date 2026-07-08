@@ -4,7 +4,9 @@
  *   npm run ingest                                # all: fixtures + ebay (+mock) + verified Shopify stores
  *   npm run ingest -- --source=fixtures           # one kind
  *   npm run ingest -- --source=shopify:staud.clothing
- *   npm run ingest -- --store=staud.clothing      # shorthand
+ *   npm run ingest -- --source=jsonld             # all verified JSON-LD stores
+ *   npm run ingest -- --source=jsonld:thereformation.com
+ *   npm run ingest -- --store=staud.clothing      # shorthand (JSON-LD stores win on domain clash)
  *   npm run ingest -- --watch                     # long-running node-cron scheduler
  *
  * Per-source error isolation: one bad store never kills the run.

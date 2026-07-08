@@ -1,17 +1,21 @@
 /**
  * Connector assembly + source selection shared by run.ts and schedule.ts.
  * Default set: fixtures + eBay (mock without keys) + every live-verified
- * Shopify store from stores.json. `--source` / `--store` narrow it.
+ * Shopify store from stores.json + every live-verified JSON-LD store from
+ * jsonld-stores.json. `--source` / `--store` narrow it.
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eq } from 'drizzle-orm';
 import type { SourceConnector } from '@hemline/contracts';
 import {
+  createJsonldConnector,
   createShopifyConnector,
   ebayConnector,
+  findJsonldStore,
   findShopifyStore,
   fixturesConnector,
+  verifiedJsonldStores,
   verifiedShopifyStores,
 } from '@hemline/connectors';
 import { createDb, sources, type Db } from '@hemline/db';
@@ -45,10 +49,27 @@ export function parseArgs(argv: string[]): CliArgs {
 }
 
 export function buildConnectors(args: Pick<CliArgs, 'source' | 'store'>): SourceConnector[] {
-  // --store=domain (or --source=shopify:domain) → exactly that store
+  // --source=jsonld:domain → exactly that JSON-LD store (must be in jsonld-stores.json
+  // — the connector needs its productUrlPattern; ad-hoc domains have none)
+  if (args.source?.startsWith('jsonld:')) {
+    const domain = args.source.slice('jsonld:'.length);
+    const store = findJsonldStore(domain);
+    if (!store) {
+      throw new Error(`unknown JSON-LD store '${domain}' — add it to jsonld-stores.json first`);
+    }
+    return [createJsonldConnector(store)];
+  }
+
+  // --store=domain (or --source=shopify:domain) → exactly that store.
+  // JSON-LD stores win when the domain is configured there (they are exactly
+  // the stores the Shopify connector cannot crawl).
   const storeDomain =
     args.store ?? (args.source?.startsWith('shopify:') ? args.source.slice('shopify:'.length) : undefined);
   if (storeDomain) {
+    if (!args.source?.startsWith('shopify:')) {
+      const jsonldStore = findJsonldStore(storeDomain);
+      if (jsonldStore) return [createJsonldConnector(jsonldStore)];
+    }
     const store = findShopifyStore(storeDomain) ?? {
       domain: storeDomain,
       displayName: storeDomain,
@@ -61,6 +82,7 @@ export function buildConnectors(args: Pick<CliArgs, 'source' | 'store'>): Source
     fixturesConnector,
     ebayConnector,
     ...verifiedShopifyStores().map((s) => createShopifyConnector(s)),
+    ...verifiedJsonldStores().map((s) => createJsonldConnector(s)),
   ];
 
   if (!args.source) return all;
@@ -68,7 +90,7 @@ export function buildConnectors(args: Pick<CliArgs, 'source' | 'store'>): Source
   const selected = all.filter((c) => c.id === wanted || c.kind === wanted);
   if (selected.length === 0) {
     throw new Error(
-      `unknown --source=${wanted} (use fixtures | ebay | shopify | shopify:<domain>)`,
+      `unknown --source=${wanted} (use fixtures | ebay | shopify | shopify:<domain> | jsonld | jsonld:<domain>)`,
     );
   }
   return selected;
