@@ -59,10 +59,22 @@ export const ColorTagSchema = z.object({
 });
 export type ColorTag = z.infer<typeof ColorTagSchema>;
 
+/**
+ * Provenance of `lengthInches` (additive, 2026-07-07 ai-eng):
+ * 'stated' — parsed/extracted from seller text (§5 fallback 1 → confidence 'high');
+ * 'image_estimate' — Haiku vision estimate from the product photo
+ * (§5 fallback 1 → confidence 'medium'; UI must style as estimated, never "Measured").
+ * Absent/null is treated as 'stated' for backward compatibility.
+ */
+export const LengthBasisSchema = z.enum(['stated', 'image_estimate']);
+export type LengthBasis = z.infer<typeof LengthBasisSchema>;
+
 /** Output of the AI extraction pipeline (doc §4.3). Also used as `attributeHints`. */
 export const ExtractedAttributesSchema = z.object({
   lengthClass: LengthClassSchema.nullable(),
   lengthInches: z.number().nullable(),
+  /** optional additive: where lengthInches came from (see LengthBasisSchema) */
+  lengthBasis: LengthBasisSchema.nullable().optional(),
   measurements: MeasurementsSchema,
   colors: z.array(ColorTagSchema),
   fabric: z.string().nullable(),
@@ -126,6 +138,8 @@ export const ListingSchema = z.object({
   colors: z.array(ColorTagSchema),
   lengthClass: LengthClassSchema.nullable(),
   lengthInches: z.number().nullable(),
+  /** optional additive: provenance of lengthInches ('stated' | 'image_estimate') */
+  lengthBasis: LengthBasisSchema.nullable().optional(),
   measurements: MeasurementsSchema,
   fabric: z.string().nullable(),
   neckline: z.string().nullable(),

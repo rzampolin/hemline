@@ -54,6 +54,7 @@ export function createExtractionCacheStore(db: Db): {
         attributes: {
           lengthClass: (row.lengthClass ?? null) as LengthClass | null,
           lengthInches: row.lengthInches ?? null,
+          lengthBasis: (row.lengthBasis ?? null) as ExtractedAttributes['lengthBasis'],
           measurements: {
             bust: measurements.bust ?? null,
             waist: measurements.waist ?? null,
@@ -92,6 +93,7 @@ export function createExtractionCacheStore(db: Db): {
         model: value.model,
         lengthClass: a.lengthClass,
         lengthInches: a.lengthInches,
+        lengthBasis: a.lengthBasis ?? (a.lengthInches != null ? 'stated' : null),
         measurementsJson: JSON.stringify(a.measurements),
         colorsJson: JSON.stringify(a.colors),
         fabric: a.fabric,

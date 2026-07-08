@@ -131,12 +131,18 @@ export function computeHem(input: HemInput): HemResult {
 
 /**
  * Contract-conformant signature (`MatchingService.hemForUser`,
- * docs/ARCHITECTURE.md §4.4). Assumes HPS-measured, non-stretch, seller-text
- * length; use {@link computeHem} for the waist-basis / stretch / image-estimate
- * edge cases.
+ * docs/ARCHITECTURE.md §4.4). Assumes HPS-measured and non-stretch; use
+ * {@link computeHem} for the waist-basis / stretch edge cases.
+ *
+ * Length provenance IS honored here (additive, 2026-07-07): when the listing
+ * carries the optional `lengthBasis: 'image_estimate'` (Haiku vision length
+ * pass), the measured-length confidence drops to 'medium' per §5 fallback 1 —
+ * estimates must never surface as "Measured" in the UI.
  */
 export function hemForUser(
-  listing: Pick<Listing, 'lengthInches' | 'lengthClass'>,
+  listing: Pick<Listing, 'lengthInches' | 'lengthClass'> & {
+    lengthBasis?: Listing['lengthBasis'];
+  },
   heightInches: number,
   heelInches = 0,
 ): HemResult {
@@ -145,6 +151,7 @@ export function hemForUser(
     lengthClass: listing.lengthClass,
     heightInches,
     heelInches,
+    lengthSource: listing.lengthBasis === 'image_estimate' ? 'image_estimate' : 'seller_text',
   });
 }
 

@@ -120,6 +120,13 @@ export const extractions = sqliteTable(
     lengthClass: text('length_class'),
     /** nullable; HPS-to-hem */
     lengthInches: real('length_inches'),
+    /**
+     * Provenance of length_inches: 'stated' (seller text) | 'image_estimate'
+     * (Haiku vision pass). NULL means stated (legacy rows) — or, when
+     * length_inches is also NULL, that no estimation attempt has been made yet
+     * (the extract:lengths queue predicate).
+     */
+    lengthBasis: text('length_basis'),
     /** {bust,waist,hip,length} inches, all nullable */
     measurementsJson: text('measurements_json').notNull().default('{}'),
     /** [{name,family,hex?}] */

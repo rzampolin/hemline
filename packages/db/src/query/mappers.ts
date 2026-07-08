@@ -63,6 +63,7 @@ export function rowToListing(
     colors: extraction ? parseJson<ColorTag[]>(extraction.colorsJson, []) : [],
     lengthClass: (extraction?.lengthClass ?? null) as LengthClass | null,
     lengthInches: extraction?.lengthInches ?? null,
+    lengthBasis: (extraction?.lengthBasis ?? null) as Listing['lengthBasis'],
     measurements: extraction
       ? normalizeMeasurements(parseJson<Partial<Measurements>>(extraction.measurementsJson, EMPTY_MEASUREMENTS))
       : EMPTY_MEASUREMENTS,

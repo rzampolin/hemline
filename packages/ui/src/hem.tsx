@@ -64,13 +64,23 @@ export function hemDetailLine(hem: HemResult, lengthClass: LengthClass | null): 
  * The non-negotiable per-card hem line. Never blank:
  * measured → solid ink pill · estimated → outlined pill · unknown → muted "Length unverified".
  */
+/**
+ * "Measured" styling requires BOTH a measured-length basis AND high confidence:
+ * a Haiku image-estimated length keeps basis='measured_length' but carries
+ * confidence='medium' (ARCHITECTURE §5 fallback 1) and must render as an
+ * estimate — never as a solid "Measured" pill.
+ */
+function isMeasuredHighConfidence(hem: HemResult): boolean {
+  return hem.basis === 'measured_length' && hem.confidence === 'high';
+}
+
 export function HemBadge({
   hem,
   invert = false,
   className,
   ...rest
 }: { hem: HemResult; invert?: boolean; className?: string } & HTMLAttributes<HTMLSpanElement>) {
-  const measured = hem.basis === 'measured_length';
+  const measured = isMeasuredHighConfidence(hem);
   if (!hem.position) {
     return (
       <span
@@ -99,7 +109,13 @@ export function HemBadge({
             : 'border border-dashed border-ink/35 bg-transparent text-ink',
         className,
       )}
-      title={measured ? 'From listed garment measurements' : 'Estimated from the length class'}
+      title={
+        measured
+          ? 'From listed garment measurements'
+          : hem.basis === 'measured_length'
+            ? 'Estimated from the listing photo'
+            : 'Estimated from the length class'
+      }
     >
       <svg viewBox="0 0 10 12" className="size-2.5 shrink-0" aria-hidden="true">
         <path
@@ -120,7 +136,7 @@ export function HemBadge({
 
 export function ConfidenceTag({ hem, className }: { hem: HemResult; className?: string }) {
   if (hem.basis === 'none') return null;
-  const measured = hem.basis === 'measured_length';
+  const measured = isMeasuredHighConfidence(hem);
   return (
     <span
       className={cn(
@@ -162,7 +178,7 @@ export function HemIndicator({
   const hemIn = hem.hemAboveFloorInches;
   const hemY = hemIn != null ? yForInchesAboveFloor(Math.max(0, hemIn), H) : null;
   const shoulderY = yForInchesAboveFloor(0.82 * H, H);
-  const estimated = hem.basis !== 'measured_length';
+  const estimated = !isMeasuredHighConfidence(hem);
   // ±3% of height uncertainty band when not measured (ARCHITECTURE §5).
   const bandIn = 0.03 * H;
 

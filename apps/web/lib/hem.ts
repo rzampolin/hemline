@@ -19,7 +19,9 @@ const CLASS_PRIOR_INCHES: Record<LengthClass, number> = {
 };
 
 export function hemForUser(
-  listing: Pick<Listing, 'lengthInches' | 'lengthClass'>,
+  listing: Pick<Listing, 'lengthInches' | 'lengthClass'> & {
+    lengthBasis?: Listing['lengthBasis'];
+  },
   heightInches: number,
   heelInches = 0,
 ): HemResult {
@@ -59,7 +61,11 @@ export function hemForUser(
     position,
     hemAboveFloorInches: Math.max(0, Math.round(hemAboveFloor * 10) / 10),
     basis,
-    confidence: basis === 'measured_length' ? 'high' : 'medium',
+    // Image-estimated lengths are 'medium' (§5 fallback 1), same as the server.
+    confidence:
+      basis === 'measured_length' && listing.lengthBasis !== 'image_estimate'
+        ? 'high'
+        : 'medium',
   };
 }
 

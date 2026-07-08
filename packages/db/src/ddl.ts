@@ -69,6 +69,7 @@ const STATEMENTS = [
     model               TEXT NOT NULL,
     length_class        TEXT,
     length_inches       REAL,
+    length_basis        TEXT,
     measurements_json   TEXT NOT NULL DEFAULT '{}',
     colors_json         TEXT NOT NULL DEFAULT '[]',
     fabric              TEXT,
@@ -142,7 +143,20 @@ const STATEMENTS = [
   )`,
 ];
 
+/**
+ * Additive column migrations for databases created before the column existed
+ * (CREATE TABLE IF NOT EXISTS won't alter an existing table). Guarded by a
+ * PRAGMA table_info check so re-runs are no-ops.
+ */
+const ADDITIVE_COLUMNS: Array<{ table: string; column: string; ddl: string }> = [
+  { table: 'extractions', column: 'length_basis', ddl: `ALTER TABLE extractions ADD COLUMN length_basis TEXT` },
+];
+
 /** Create all core tables/indexes if absent. Idempotent. */
 export function ensureSchema(db: Db): void {
   for (const stmt of STATEMENTS) db.run(sql.raw(stmt));
+  for (const mig of ADDITIVE_COLUMNS) {
+    const columns = db.all<{ name: string }>(sql.raw(`PRAGMA table_info(${mig.table})`));
+    if (!columns.some((c) => c.name === mig.column)) db.run(sql.raw(mig.ddl));
+  }
 }

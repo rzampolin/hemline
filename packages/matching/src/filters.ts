@@ -191,6 +191,7 @@ function hemForFilter(listing: Listing, ctx?: UserFitContext): HemResult {
     lengthClass: listing.lengthClass,
     heightInches: ctx.heightInches,
     heelInches: ctx.heelInches ?? 0,
+    lengthSource: listing.lengthBasis === 'image_estimate' ? 'image_estimate' : 'seller_text',
   });
 }
 

@@ -211,9 +211,16 @@ export default function DressDetailPage() {
             <p className="mt-1 text-sm text-ink-soft" data-testid="hem-detail-line">
               {hemDetailLine(hem, listing.lengthClass)}
               {hem.basis === 'length_class_prior' && ' — estimated from its length class.'}
-              {hem.basis === 'measured_length' && listing.lengthInches != null && (
-                <> — from the seller’s {listing.lengthInches}″ measurement.</>
-              )}
+              {hem.basis === 'measured_length' &&
+                hem.confidence === 'high' &&
+                listing.lengthInches != null && (
+                  <> — from the seller’s {listing.lengthInches}″ measurement.</>
+                )}
+              {hem.basis === 'measured_length' &&
+                hem.confidence !== 'high' &&
+                listing.lengthInches != null && (
+                  <> — estimated ≈{listing.lengthInches}″ from the listing photo.</>
+                )}
             </p>
             <HemIndicator heightInches={heightInches} hem={hem} className="mt-4" />
             {!profile?.heightInches && (

@@ -65,6 +65,7 @@ const DDL = [
     model               TEXT NOT NULL,
     length_class        TEXT,
     length_inches       REAL,
+    length_basis        TEXT,
     measurements_json   TEXT NOT NULL DEFAULT '{}',
     colors_json         TEXT NOT NULL DEFAULT '[]',
     fabric              TEXT,
