@@ -11,3 +11,4 @@ export * from './saves';
 export * from './alerts';
 export * from './admin';
 export * from './ai-cache';
+export * from './embeddings';
