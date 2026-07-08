@@ -94,3 +94,68 @@ where docs/ARCHITECTURE.md was ambiguous or silent. Contracts were not touched.
     first real ingest run** — that is the 2×cadence rule working as specced
     (soft delete only; rows remain for "possibly sold" UI). Seeded data is
     untouched until you run `npm run ingest`.
+
+15. **JSON-LD / sitemap connector (`jsonld:<domain>`, kind `jsonld`)** unlocks
+    non-Shopify brands via schema.org Product JSON-LD on PDPs. Discovery:
+    `store.sitemapUrl` override → robots.txt `Sitemap:` lines (filtered to the
+    store's host — Reformation's robots also lists its .fr sitemap) →
+    `/sitemap.xml` fallback; sitemap indexes are followed (product-named
+    children preferred, ≤12 sitemap fetches/run), `*.xml.gz` bodies gunzipped.
+    Candidate URLs must match the per-store `productUrlPattern` regex; the
+    per-run cap (default 500, `JSONLD_MAX_PAGES`) **logs** what it skips, never
+    silently truncates. Cadence `30 6 * * *` (daily, offset from the Shopify
+    wave); `INGEST_ENABLE_JSONLD=false` disables like the Shopify toggle.
+    (EM: both env vars are candidates for `.env.example`.)
+
+16. **Capped crawls are ordered dress-URL-first, then sitemap `lastmod`
+    freshest-first.** Verified live on thereformation.com: sitemap-order top-50
+    yielded 37 dresses of which 12 had no price and only 24% had sizes
+    (archived/sold-out products cluster at old lastmods — their JSON-LD
+    collapses to a single sizeless OutOfStock offer); lastmod-ordered top-50
+    yielded 50/50 dresses with 100% sizes + per-size availability.
+
+17. **Malformed JSON-LD recovery pass.** whistles.com ships raw control
+    characters inside JSON string literals (invalid JSON). On parse failure we
+    retry with control chars replaced by spaces; only blocks that still fail
+    count as malformed (logged when a PDP has nothing else). Descriptions are
+    entity-decoded *before* HTML-stripping (Whistles double-encodes
+    `&lt;p&gt;`-markup in `description`).
+
+18. **`priceDivisor` store field.** forloveandlemons.com's theme emits integer
+    cents in the JSON-LD `price` field ("21299.00" for a $212.99 dress —
+    verified against the on-site price). Auto-detecting that is guesswork, so
+    it is explicit per-store config, set only when a probe proves it.
+
+19. **Per-PDP conditional requests.** ETag/Last-Modified is cached per product
+    URL in `sources.etag_json` (up to ~500 entries/store, ~50 KB — fine in
+    SQLite); a 304 re-emits the stored listing via `loadExistingRawListings`
+    keyed by `sourceUrl`, same freshness rationale as decision #2.
+
+20. **Bot-block circuit breaker:** 8 consecutive PDP failures abandon the
+    store for the run (Aritzia went from 200s to blanket 403s mid-probe; a
+    polite bot stops instead of walking the remaining URL list into a WAF).
+
+21. **jsonld-stores.json vs stores.json boundary: products.json wins.** During
+    candidate research, needleandthread.com and veronicabeard.com turned out to
+    be Shopify with open products.json → added to *shopify* stores.json
+    (verified) instead; the JSON-LD list is for stores the Shopify connector
+    cannot crawl. `--store=<domain>` resolves to the JSON-LD connector when the
+    domain is configured there, else Shopify (override with
+    `--source=shopify:<domain>`). `--source=jsonld:<domain>` requires a
+    jsonld-stores.json entry (the connector needs its `productUrlPattern`).
+    Notable non-starters, all recorded with notes in jsonld-stores.json:
+    realisationpar.com (BigCommerce, Product **microdata** only — a microdata
+    parser is the natural follow-up), houseofcb.com (no discoverable sitemap),
+    jcrew.com/ba-sh.com (ProductGroup without server-side offers/price),
+    anthropologie/freepeople/stories/mango/reiss (bot-blocked), Sézane & Hello
+    Molly (known blockers, skipped without new requests).
+
+22. **Brand sanity guard:** FL&L ships `brand: "Ready-to-Wear"` (a category);
+    category-ish brand strings fall back to the store display name.
+
+23. **Request to backend-eng:** `normalizeSizeLabels` returns `[]` for
+    Reformation's SFCC-padded labels — zero-padded numerics (`"002"`, `"010"`)
+    and padded alpha (`"0XS"`, `"00S"`, `"00M"`). Until it learns those, the
+    size hard-filter can't match `jsonld:thereformation.com` listings (raw
+    labels are stored as-seen per the RawListing contract; hem/length work is
+    unaffected).
