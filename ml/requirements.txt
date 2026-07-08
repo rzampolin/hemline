@@ -1,0 +1,9 @@
+# Marqo-FashionSigLIP sidecar (Apache 2.0 model, open weights).
+# torch ships macOS arm64 wheels (MPS) for cp310–cp314 — see ml/setup.sh.
+torch>=2.6
+open_clip_torch>=2.30
+# open_clip's SigLIP configs use a timm vision tower + an HF sentencepiece tokenizer
+timm>=1.0
+transformers>=4.48
+sentencepiece>=0.2
+pillow>=10
