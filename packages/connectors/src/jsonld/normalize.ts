@@ -6,6 +6,11 @@
  * @graph wrapper, size in offer name, prices emitted in cents — priceDivisor),
  * whistles.com (SFCC, control chars in JSON, entity-encoded HTML description),
  * jcrew.com / ba-sh.com (ProductGroup + hasVariant).
+ *
+ * When a PDP yields no usable JSON-LD Product, the same normalization runs
+ * over schema.org MICRODATA (microdata.ts → JSON-LD-shaped nodes; category
+ * falls back to the BreadcrumbList trail) — verified live 2026-07-08 on
+ * realisationpar.com (BigCommerce). JSON-LD stays preferred when both exist.
  */
 import type { RawListing } from '@hemline/contracts';
 import {
@@ -29,6 +34,7 @@ import {
   type JsonLdNode,
   type ParsedOffer,
 } from './extract';
+import { extractMicrodata } from './microdata';
 import { decodeXmlEntities } from './sitemap';
 
 export interface JsonldStoreInfo {
@@ -138,7 +144,9 @@ function variantNodes(node: JsonLdNode): JsonLdNode[] {
 
 /**
  * Normalize one Product/ProductGroup node to a RawListing, or null when it is
- * not a dress or has no usable price.
+ * not a dress or has no usable price. `fallbackCategory` (e.g. the microdata
+ * BreadcrumbList trail) only applies when the node carries no category of its
+ * own — many stores put "dress" nowhere but the breadcrumb.
  */
 export function normalizeJsonldProduct(
   node: JsonLdNode,
@@ -146,11 +154,12 @@ export function normalizeJsonldProduct(
   url: string,
   seenAt: number,
   html?: string,
+  fallbackCategory?: string | null,
 ): RawListing | null {
   const title = asString(node.name);
   if (!title) return null;
   const cleanTitle = stripHtml(decodeXmlEntities(title)).trim();
-  const category = categoryText(node.category);
+  const category = categoryText(node.category) || (fallbackCategory ?? '');
   if (!isDressJsonld(cleanTitle, category, url)) return null;
 
   const variants = variantNodes(node);
@@ -230,10 +239,17 @@ export interface PageExtraction {
   listing: RawListing | null;
   /** why the page yielded nothing (stats/debugging) */
   outcome: 'ok' | 'no_jsonld_product' | 'not_a_dress' | 'no_price' | 'malformed_only';
+  /** which structured-data source produced the listing (outcome 'ok' only) */
+  via?: 'jsonld' | 'microdata';
   malformedBlocks: number;
 }
 
-/** Full PDP HTML → RawListing (or a categorized miss). */
+/**
+ * Full PDP HTML → RawListing (or a categorized miss).
+ * JSON-LD Product nodes are tried first; when none yields a usable listing,
+ * the microdata fallback runs (with the breadcrumb trail as the category of
+ * last resort — minus the product's own name, which ends most trails).
+ */
 export function extractListingFromHtml(
   html: string,
   store: JsonldStoreInfo,
@@ -241,23 +257,48 @@ export function extractListingFromHtml(
   seenAt: number,
 ): PageExtraction {
   const { parsed, malformed } = extractJsonLdBlocks(html);
-  const nodes = collectProductNodes(parsed);
-  if (nodes.length === 0) {
+  const jsonldNodes = collectProductNodes(parsed);
+
+  let sawDress = false;
+  const tryNodes = (
+    nodes: JsonLdNode[],
+    fallbackCategory: string | null,
+  ): RawListing | null => {
+    for (const node of nodes) {
+      const listing = normalizeJsonldProduct(node, store, url, seenAt, html, fallbackCategory);
+      if (listing) return listing;
+      const title = asString(node.name);
+      if (title) {
+        const cleanTitle = stripHtml(decodeXmlEntities(title)).trim();
+        const category = categoryText(node.category) || (fallbackCategory ?? '');
+        if (isDressJsonld(cleanTitle, category, url)) sawDress = true; // dress, but no price
+      }
+    }
+    return null;
+  };
+
+  const fromJsonld = tryNodes(jsonldNodes, null);
+  if (fromJsonld) {
+    return { listing: fromJsonld, outcome: 'ok', via: 'jsonld', malformedBlocks: malformed };
+  }
+
+  // ── microdata fallback (no usable JSON-LD Product on this page) ────────
+  const micro = extractMicrodata(html);
+  for (const node of micro.products) {
+    const title = asString(node.name);
+    const trail = micro.breadcrumbs.filter((b) => b !== title).join(' ') || null;
+    const listing = tryNodes([node], trail);
+    if (listing) {
+      return { listing, outcome: 'ok', via: 'microdata', malformedBlocks: malformed };
+    }
+  }
+
+  if (jsonldNodes.length === 0 && micro.products.length === 0) {
     return {
       listing: null,
       outcome: malformed > 0 && parsed.length === 0 ? 'malformed_only' : 'no_jsonld_product',
       malformedBlocks: malformed,
     };
-  }
-
-  let sawDress = false;
-  for (const node of nodes) {
-    const listing = normalizeJsonldProduct(node, store, url, seenAt, html);
-    if (listing) return { listing, outcome: 'ok', malformedBlocks: malformed };
-    const title = asString(node.name);
-    if (title && isDressJsonld(stripHtml(decodeXmlEntities(title)).trim(), categoryText(node.category), url)) {
-      sawDress = true; // it was a dress but had no price
-    }
   }
   return {
     listing: null,

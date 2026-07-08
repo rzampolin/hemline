@@ -42,8 +42,8 @@
     "displayName": "Réalisation Par",
     "sitemapUrl": "https://realisationpar.com/xmlsitemap.php",
     "productUrlPattern": "realisationpar\\.com/[^/]+/$",
-    "verified": false,
-    "notes": "probed 2026-07-07: BigCommerce (not Shopify). Sitemap works (xmlsitemap.php index → type=products child, ~190 products; URLs lack 'dress'), but PDPs embed schema.org/Product as MICRODATA only — no JSON-LD. Needs a microdata parser (follow-up)."
+    "verified": true,
+    "notes": "probed 2026-07-08 (3 PDPs): BigCommerce stencil. xmlsitemap.php index → type=products child (~190 products; URLs lack 'dress' so no crawl-order boost, but 190 < page cap). PDPs are MICRODATA-only (zero JSON-LD): Product scope with name (h1) + description (article) + single Offer → nested PriceSpecification metas (price/priceCurrency USD) + availability meta; category ONLY in BreadcrumbList microdata ('Mini Dresses'/'Midi Dresses'/'Knitwear'… — drives the dress filter); no image/brand/sku itemprops → og:image fallback supplies the image, brand falls back to displayName; sizes are client-side only (like lulus/madewell). Descriptions state model heights ('Alex 5'3 wears S and Gabriella 5'9 wears XS') — good for lengths v2 anchoring."
   },
   {
     "domain": "houseofcb.com",

@@ -25,6 +25,7 @@ import storesJson from './jsonld-stores.json';
 
 export * from './normalize';
 export * from './extract';
+export * from './microdata';
 export * from './sitemap';
 
 export interface JsonldStore extends JsonldStoreInfo {

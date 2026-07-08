@@ -356,6 +356,7 @@ describe('jsonld-stores.json', () => {
       'madewell.com': 'https://www.madewell.com/p/womens/sale/dresses-skirts/ruched-high-low-slip-dress/NW045/',
       'whistles.com': 'https://www.whistles.com/product/anna-dress-38714.html',
       'forloveandlemons.com': 'https://forloveandlemons.com/products/adahlia-floral-midi-dress-cream',
+      'realisationpar.com': 'https://realisationpar.com/the-christy-black/', // microdata-only PDPs
     };
     for (const [domain, url] of Object.entries(cases)) {
       const store = findJsonldStore(domain);
