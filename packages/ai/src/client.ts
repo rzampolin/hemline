@@ -160,3 +160,33 @@ function parseBudget(raw: string | undefined): number {
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_DAILY_BUDGET_USD;
 }
+
+/**
+ * Does this API failure mean "the API could not fetch a url-sourced file we
+ * referenced" (seen live 2026-07: 400 invalid_request_error "Unable to
+ * download the file. Please verify the URL and try again." on some
+ * Reformation Cloudinary image URLs)?
+ *
+ * Accepts both thrown SDK APIErrors and Message Batches `errored` result
+ * payloads ({ type: 'error', error: { type, message } }). The listing itself
+ * is fine — only the image block is; callers should retry text-only
+ * (extraction) or mark the row not-estimable (vision lengths) instead of
+ * treating it as a model/service failure.
+ */
+export function isImageUrlDownloadError(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as { status?: number; message?: string; error?: unknown };
+  let text = typeof e.message === 'string' ? e.message : '';
+  try {
+    text += ' ' + JSON.stringify(e.error ?? '');
+  } catch {
+    // circular error payload — match on message alone
+  }
+  const invalidRequest = e.status === 400 || /invalid_request_error/i.test(text);
+  return (
+    invalidRequest &&
+    /(unable\s+to|failed\s+to|could\s+not|cannot)\s+(download|fetch|retrieve)[\s\S]{0,120}(file|url|image)/i.test(
+      text,
+    )
+  );
+}

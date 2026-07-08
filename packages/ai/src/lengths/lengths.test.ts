@@ -252,6 +252,43 @@ describe('createLengthEstimator', () => {
     expect(result.error).toContain('529');
   });
 
+  it('image-download 400 → image_unavailable after the retry budget (terminal, distinct log)', async () => {
+    const err = new Error(
+      '400 {"type":"error","error":{"type":"invalid_request_error","message":' +
+        '"Unable to download the file. Please verify the URL and try again."}}',
+    );
+    (err as Error & { status: number }).status = 400;
+    const logs: string[] = [];
+    const create = vi.fn().mockRejectedValue(err);
+    const estimator = createLengthEstimator({
+      client: liveClientWith(create),
+      imageDownloadAttempts: 2,
+      logger: (m) => logs.push(m),
+    });
+    const result = await estimator.estimateOne(anInput);
+
+    expect(result.status).toBe('image_unavailable'); // NOT 'failed' — queue must drain
+    expect(result.lengthInches).toBeNull();
+    expect(result.error).toContain('Unable to download');
+    expect(create).toHaveBeenCalledTimes(2); // exactly the retry budget
+    expect(estimator.stats).toMatchObject({ imageUnavailable: 1, failed: 0, calls: 0 });
+    expect(logs.some((l) => l.includes('[IMAGE-URL]') && l.includes('not_estimable'))).toBe(true);
+  });
+
+  it('transient download blip: fails once, succeeds on retry → estimated', async () => {
+    const err = new Error('400 invalid_request_error: Unable to download the file.');
+    (err as Error & { status: number }).status = 400;
+    const create = vi
+      .fn()
+      .mockRejectedValueOnce(err)
+      .mockResolvedValueOnce(fakeResponse({ lengthInches: 39, confidence: 0.8, reasoning: 'knee' }));
+    const estimator = createLengthEstimator({ client: liveClientWith(create), logger: () => {} });
+    const result = await estimator.estimateOne(anInput);
+    expect(result.status).toBe('estimated');
+    expect(result.lengthInches).toBe(39);
+    expect(estimator.stats).toMatchObject({ imageUnavailable: 0, estimated: 1 });
+  });
+
   it('keyless/budget-capped client → failed without calling the API', async () => {
     const create = vi.fn();
     const client = { ...liveClientWith(create), effectiveMode: () => 'mock' as const };

@@ -196,3 +196,28 @@ doc was ambiguous, contradictory, or silent. Everything else follows the doc.
     so basis='image_estimate' now always implies inches present (matching/UI
     only ever branch on 'image_estimate' when inches exist, so the new value
     is invisible to them).
+
+23. **Image-URL download failures are not model failures (2026-07-08).**
+    Production: the API returned 400 invalid_request_error "Unable to
+    download the file. Please verify the URL and try again." for some
+    Reformation Cloudinary image URLs. The extraction service treated that as
+    a hard failure → full mock fallback (~36 listings persisted as
+    model='mock'), and the vision lengths pass left ~18 rows 'failed (still
+    queued)' forever. Policy (`isImageUrlDownloadError` in client.ts detects
+    the shape for both thrown SDK errors and Batches `errored` payloads):
+    - **Extraction (text+image)**: the listing TEXT is still perfectly
+      extractable, so the same listing is retried once TEXT-ONLY before the
+      recovery ladder ever considers mock — a live text extraction beats a
+      mock one every time. Counted in the new
+      `ExtractionRunStats.imageUrlFailures` (surfaced by `extract:upgrade`
+      and pipeline stats); NOT counted as a fallback. Batches entries that
+      error this way get one interactive text-only live call instead of mock.
+    - **Vision lengths (image-only)**: no text fallback exists — the image IS
+      the input. The estimator retries the call up to `imageDownloadAttempts`
+      (default 2, absorbing transient CDN blips), then returns the new
+      TERMINAL status 'image_unavailable'; the runner marks the row
+      length_basis='not_estimable' (inches NULL) with a distinct
+      "[IMAGE-URL] … image not downloadable" log so the queue drains instead
+      of re-billing a dead URL on every resume. Re-ingest that changes the
+      listing content (new hash → new extraction row) naturally re-qualifies
+      the listing if the store fixes its CDN.

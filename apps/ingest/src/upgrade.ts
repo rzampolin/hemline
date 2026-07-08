@@ -82,7 +82,15 @@ async function main(): Promise<void> {
   const logger: Logger = { info: console.log, warn: console.warn, error: console.error };
   let extracted = 0;
   let totalCostUsd = 0;
-  const totals = { liveCalls: 0, retries: 0, retrySuccesses: 0, coercions: 0, fallbacks: 0, mockExtractions: 0 };
+  const totals = {
+    liveCalls: 0,
+    retries: 0,
+    retrySuccesses: 0,
+    coercions: 0,
+    imageUrlFailures: 0,
+    fallbacks: 0,
+    mockExtractions: 0,
+  };
 
   function fold(outcome: ExtractionOutcome): void {
     extracted += outcome.extracted;
@@ -92,6 +100,7 @@ async function main(): Promise<void> {
       totals.retries += outcome.stats.retries;
       totals.retrySuccesses += outcome.stats.retrySuccesses;
       totals.coercions += outcome.stats.coercions;
+      totals.imageUrlFailures += outcome.stats.imageUrlFailures ?? 0;
       totals.fallbacks += outcome.stats.fallbacks;
       totals.mockExtractions += outcome.stats.mockExtractions;
     }
@@ -113,7 +122,8 @@ async function main(): Promise<void> {
     }
     console.log(
       `[upgrade] progress: ${extracted} extracted, running cost ${usd(totalCostUsd)} ` +
-        `(retries ${totals.retries}, coercions ${totals.coercions}, fallbacks ${totals.fallbacks}), queue refilling…`,
+        `(retries ${totals.retries}, coercions ${totals.coercions}, ` +
+        `image-URL failures ${totals.imageUrlFailures}, fallbacks ${totals.fallbacks}), queue refilling…`,
     );
   }
 
@@ -124,8 +134,8 @@ async function main(): Promise<void> {
   );
   console.log(
     `[upgrade] validation recovery: ${totals.retries} retried (${totals.retrySuccesses} fixed by retry), ` +
-      `${totals.coercions} coerced, ${totals.fallbacks} fell back to mock, ` +
-      `${totals.mockExtractions} total mock extraction(s)`,
+      `${totals.coercions} coerced, ${totals.imageUrlFailures} image-URL failure(s) retried TEXT-ONLY (stayed live), ` +
+      `${totals.fallbacks} fell back to mock, ${totals.mockExtractions} total mock extraction(s)`,
   );
 }
 

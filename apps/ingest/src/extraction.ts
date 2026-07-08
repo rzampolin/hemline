@@ -121,6 +121,8 @@ export interface ExtractionOutcome {
     retries: number;
     retrySuccesses: number;
     coercions: number;
+    /** API image-download 400s recovered by a TEXT-ONLY retry (still live) */
+    imageUrlFailures?: number;
     fallbacks: number;
     mockExtractions: number;
     cacheHits: number;

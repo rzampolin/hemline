@@ -21,7 +21,7 @@ import {
   type ExtractionInput,
   type ExtractionService,
 } from '@hemline/contracts';
-import { createAiClient, type AiClient } from '../client';
+import { createAiClient, isImageUrlDownloadError, type AiClient } from '../client';
 import { coerceExtractionOutput } from './coerce';
 import { measurementsAgree, parseMeasurements, type ParsedMeasurements } from './measurements';
 import { mockExtract } from './mock';
@@ -73,6 +73,12 @@ export interface ExtractionRunStats {
   retrySuccesses: number;
   /** outputs recovered by deterministic enum/array coercion */
   coercions: number;
+  /**
+   * API-side image download failures (400 "Unable to download the file…")
+   * that triggered a TEXT-ONLY retry of the same listing — a live text
+   * extraction beats a mock one, so these are NOT fallbacks.
+   */
+  imageUrlFailures: number;
   /** extractions that fell all the way back to the mock rule engine */
   fallbacks: number;
   /** listings served by the deterministic mock engine (keyless / budget cap) */
@@ -118,6 +124,7 @@ export function createExtractionService(
     retries: 0,
     retrySuccesses: 0,
     coercions: 0,
+    imageUrlFailures: 0,
     fallbacks: 0,
     mockExtractions: 0,
     cacheHits: 0,
@@ -195,12 +202,21 @@ export function createExtractionService(
      * One live extraction, with the validation recovery ladder:
      *   validate → ONE retry with the Zod errors fed back → deterministic
      *   coercion (coerce.ts) → mock fallback (loud [FALLBACK] log).
+     *
+     * Image-URL resilience (decisions-ai-eng #23): when the API itself cannot
+     * download the attached image URL (400 invalid_request_error), the listing
+     * is retried once TEXT-ONLY — a live text extraction beats a mock one —
+     * before the mock fallback is even considered.
      */
-    async function extractOneLive(input: ExtractionInput): Promise<void> {
+    async function extractOneLive(
+      input: ExtractionInput,
+      opts: { textOnly?: boolean } = {},
+    ): Promise<void> {
       const anthropic = client.anthropic!;
       const model = client.models.extraction;
       const parsed = parseMeasurements(`${input.title}\n${input.description ?? ''}`);
-      const userContent = buildUserContent(input, parsed);
+      const userContent = buildUserContent(input, parsed, opts);
+      const sentImage = userContent.some((b) => b.type === 'image');
       const baseParams = {
         model,
         max_tokens: maxOutputTokens,
@@ -264,6 +280,16 @@ export function createExtractionService(
         }
         await settle(input, finalizeModelOutput(validated.output!, parsed, input), model);
       } catch (err) {
+        // the API couldn't download the image URL — the listing TEXT is still
+        // perfectly extractable, so retry once without the image block
+        if (sentImage && isImageUrlDownloadError(err)) {
+          stats.imageUrlFailures += 1;
+          log(
+            `[IMAGE-URL] extraction ${input.contentHash}: API could not download ` +
+              `${input.primaryImageUrl ?? '(image)'} — retrying TEXT-ONLY`,
+          );
+          return extractOneLive(input, { textOnly: true });
+        }
         // 3) last resort — loud, with the full content hash for triage
         stats.fallbacks += 1;
         stats.mockExtractions += 1;
@@ -358,6 +384,20 @@ export function createExtractionService(
             log(`[FALLBACK] extraction ${contentHash} → mock rule engine: ${(err as Error).message}`);
             // fall through to mock
           }
+        } else if (
+          entry.result.type === 'errored' &&
+          isImageUrlDownloadError(entry.result.error) &&
+          input.primaryImageUrl != null
+        ) {
+          // API-side image download failure — the listing text is still live-
+          // extractable; one interactive TEXT-ONLY call instead of a mock row.
+          stats.imageUrlFailures += 1;
+          log(
+            `[IMAGE-URL] extraction ${contentHash}: batch entry failed to download ` +
+              `${input.primaryImageUrl} — retrying TEXT-ONLY (live call)`,
+          );
+          await extractOneLive(input, { textOnly: true });
+          continue;
         }
         stats.mockExtractions += 1;
         await settle(input, mockExtract(input), 'mock');
@@ -416,10 +456,11 @@ function validateModelJson(text: string): {
 function buildUserContent(
   input: ExtractionInput,
   parsed: ParsedMeasurements,
+  opts: { textOnly?: boolean } = {},
 ): Anthropic.ContentBlockParam[] {
   const { userText, wantsImage } = buildExtractionUserText(input, parsed);
   const content: Anthropic.ContentBlockParam[] = [{ type: 'text', text: userText }];
-  if (wantsImage && input.primaryImageUrl) {
+  if (!opts.textOnly && wantsImage && input.primaryImageUrl) {
     content.push({
       type: 'image',
       source: { type: 'url', url: input.primaryImageUrl },

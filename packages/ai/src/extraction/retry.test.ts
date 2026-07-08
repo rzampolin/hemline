@@ -5,8 +5,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type Anthropic from '@anthropic-ai/sdk';
 import type { ExtractionInput } from '@hemline/contracts';
-import { createCostMeter, type AiClient } from '../client';
-import { createExtractionService } from './index';
+import { createCostMeter, isImageUrlDownloadError, type AiClient } from '../client';
+import { createExtractionService, InMemoryExtractionCache } from './index';
 
 function fakeResponse(payload: unknown): unknown {
   return {
@@ -138,5 +138,106 @@ describe('extraction validation recovery ladder', () => {
     await service.extractBatch([input('h1'), input('h2')]);
     // 2 calls × (1000 in × $1/MTok + 200 out × $5/MTok) = 2 × $0.002
     expect(service.costUsd()).toBeCloseTo(0.004, 6);
+  });
+});
+
+// ── image-URL download failures (production 2026-07: Reformation Cloudinary) ──
+
+/** Weak text (no length/silhouette signal) + an image URL → image attached. */
+function imageInput(hash: string): ExtractionInput {
+  return {
+    contentHash: hash,
+    title: 'Emerald Dress',
+    description: null,
+    brand: null,
+    primaryImageUrl: 'https://res.cloudinary.com/ref/image/upload/dress.jpg',
+    attributeHints: null,
+    sizeLabels: [],
+  };
+}
+
+/** The exact production failure: 400 invalid_request_error on the image URL. */
+function imageDownloadError(): Error {
+  const err = new Error(
+    '400 {"type":"error","error":{"type":"invalid_request_error","message":' +
+      '"Unable to download the file. Please verify the URL and try again."}}',
+  );
+  (err as Error & { status: number }).status = 400;
+  return err;
+}
+
+describe('isImageUrlDownloadError', () => {
+  it('matches the production 400 shape (thrown SDK error)', () => {
+    expect(isImageUrlDownloadError(imageDownloadError())).toBe(true);
+  });
+
+  it('matches Message Batches errored payloads', () => {
+    expect(
+      isImageUrlDownloadError({
+        type: 'error',
+        error: {
+          type: 'invalid_request_error',
+          message: 'Unable to download the file. Please verify the URL and try again.',
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it('does not match other 400s, overloads, or non-errors', () => {
+    const other400 = new Error('400 invalid_request_error: max_tokens too large');
+    (other400 as Error & { status: number }).status = 400;
+    expect(isImageUrlDownloadError(other400)).toBe(false);
+    expect(isImageUrlDownloadError(new Error('529 overloaded'))).toBe(false);
+    expect(isImageUrlDownloadError('unable to download the file')).toBe(false);
+    expect(isImageUrlDownloadError(null)).toBe(false);
+  });
+});
+
+describe('extraction image-URL failure → TEXT-ONLY retry (never mock)', () => {
+  it('retries the same listing without the image block; model recorded as live', async () => {
+    const logs: string[] = [];
+    const cache = new InMemoryExtractionCache();
+    const create = vi
+      .fn()
+      .mockRejectedValueOnce(imageDownloadError())
+      .mockResolvedValueOnce(fakeResponse(good));
+    const service = createExtractionService({
+      client: liveClientWith(create),
+      cache,
+      logger: (m) => logs.push(m),
+    });
+    const results = await service.extractBatch([imageInput('img1')]);
+
+    // live extraction succeeded on the text-only retry
+    expect(results.get('img1')!.silhouette).toBe('wrap');
+    expect((await cache.get('img1'))!.model).toBe('claude-haiku-4-5-20251001'); // NOT 'mock'
+    expect(create).toHaveBeenCalledTimes(2);
+    // first attempt attached the image; the retry is text-only
+    const firstContent = create.mock.calls[0][0].messages[0].content;
+    const retryContent = create.mock.calls[1][0].messages[0].content;
+    expect(firstContent.some((b: { type: string }) => b.type === 'image')).toBe(true);
+    expect(retryContent.some((b: { type: string }) => b.type === 'image')).toBe(false);
+    // tracked as an image failure, NOT a fallback
+    expect(service.stats).toMatchObject({ imageUrlFailures: 1, fallbacks: 0, mockExtractions: 0 });
+    expect(logs.some((l) => l.includes('[IMAGE-URL]') && l.includes('img1'))).toBe(true);
+    expect(logs.some((l) => l.includes('[FALLBACK]'))).toBe(false);
+  });
+
+  it('text-only retry that fails for other reasons still ends at the mock fallback', async () => {
+    const create = vi
+      .fn()
+      .mockRejectedValueOnce(imageDownloadError())
+      .mockRejectedValue(new Error('529 overloaded'));
+    const service = createExtractionService({ client: liveClientWith(create), logger: () => {} });
+    const results = await service.extractBatch([imageInput('img2')]);
+    expect(results.get('img2')).toBeDefined(); // mock still answered
+    expect(service.stats).toMatchObject({ imageUrlFailures: 1, fallbacks: 1, mockExtractions: 1 });
+  });
+
+  it('download error on a text-only request (no image sent) is NOT retried as image failure', async () => {
+    const create = vi.fn().mockRejectedValue(imageDownloadError());
+    const service = createExtractionService({ client: liveClientWith(create), logger: () => {} });
+    await service.extractBatch([input('no-img')]); // input() has no primaryImageUrl
+    expect(service.stats).toMatchObject({ imageUrlFailures: 0, fallbacks: 1 });
   });
 });

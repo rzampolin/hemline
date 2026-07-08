@@ -25,7 +25,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod/v4';
 import type { LengthClass } from '@hemline/contracts';
-import { createAiClient, type AiClient } from '../client';
+import { createAiClient, isImageUrlDownloadError, type AiClient } from '../client';
 
 // ── model-facing schema (zod/v4 for zodOutputFormat, decisions-ai-eng #13) ──
 
@@ -119,9 +119,16 @@ export interface LengthEstimateResult {
    * 'clamped'    → estimate contradicted the lengthClass prior band — distrust
    *                it, keep the class prior (write NO inches, mark attempted);
    * 'no_estimate'→ model could not estimate (null) — mark attempted;
-   * 'failed'     → API/validation error — do NOT mark, safe to retry later.
+   * 'image_unavailable' → the API itself cannot download the image URL (400
+   *                "Unable to download the file…", persisted across the retry
+   *                budget). The image IS the input here — no text fallback
+   *                exists — so this is TERMINAL: mark 'not_estimable' so the
+   *                queue drains instead of re-billing a dead URL forever
+   *                (decisions-ai-eng #23);
+   * 'failed'     → transient API/validation error — do NOT mark, safe to
+   *                retry later.
    */
-  status: 'estimated' | 'clamped' | 'no_estimate' | 'failed';
+  status: 'estimated' | 'clamped' | 'no_estimate' | 'image_unavailable' | 'failed';
   lengthInches: number | null;
   /** raw model value before clamping, for logging */
   rawLengthInches: number | null;
@@ -213,6 +220,8 @@ export interface LengthEstimatorStats {
   estimated: number;
   clamped: number;
   noEstimate: number;
+  /** terminal image-download failures (marked not_estimable by the runner) */
+  imageUnavailable: number;
   failed: number;
 }
 
@@ -227,18 +236,26 @@ export interface LengthEstimator {
 export interface LengthEstimatorOptions {
   client?: AiClient;
   maxOutputTokens?: number;
+  /**
+   * Total attempts when the API reports it cannot download the image URL
+   * (default 2 — one retry absorbs transient CDN blips; after that the URL is
+   * treated as dead and the row surfaces as 'image_unavailable', terminal).
+   */
+  imageDownloadAttempts?: number;
   logger?: (message: string) => void;
 }
 
 export function createLengthEstimator(options: LengthEstimatorOptions = {}): LengthEstimator {
   const client = options.client ?? createAiClient();
   const maxOutputTokens = options.maxOutputTokens ?? 300;
+  const imageDownloadAttempts = Math.max(1, options.imageDownloadAttempts ?? 2);
   const log = options.logger ?? ((m: string) => console.log(m));
   const stats: LengthEstimatorStats = {
     calls: 0,
     estimated: 0,
     clamped: 0,
     noEstimate: 0,
+    imageUnavailable: 0,
     failed: 0,
   };
 
@@ -264,27 +281,55 @@ export function createLengthEstimator(options: LengthEstimatorOptions = {}): Len
     const anthropic = client.anthropic!;
     const model = client.models.extraction;
     try {
-      const message = await anthropic.messages.create({
-        model,
-        max_tokens: maxOutputTokens,
-        system: [
-          {
-            type: 'text',
-            text: LENGTH_ESTIMATION_SYSTEM_PROMPT,
-            cache_control: { type: 'ephemeral' },
-          },
-        ],
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'image', source: { type: 'url', url: input.primaryImageUrl } },
-              { type: 'text', text: buildLengthEstimationUserText(input) },
+      let message: Anthropic.Message | undefined;
+      // The image IS the input for this pass — an API-side image-download
+      // failure cannot be worked around, only retried (transient CDN blip)
+      // and then surfaced as terminal so the queue drains (decisions #23).
+      for (let attempt = 1; message === undefined; attempt++) {
+        try {
+          message = await anthropic.messages.create({
+            model,
+            max_tokens: maxOutputTokens,
+            system: [
+              {
+                type: 'text',
+                text: LENGTH_ESTIMATION_SYSTEM_PROMPT,
+                cache_control: { type: 'ephemeral' },
+              },
             ],
-          },
-        ],
-        output_config: { format: zodOutputFormat(LengthEstimateOutputSchema) },
-      });
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  { type: 'image', source: { type: 'url', url: input.primaryImageUrl } },
+                  { type: 'text', text: buildLengthEstimationUserText(input) },
+                ],
+              },
+            ],
+            output_config: { format: zodOutputFormat(LengthEstimateOutputSchema) },
+          });
+        } catch (err) {
+          if (!isImageUrlDownloadError(err)) throw err;
+          if (attempt >= imageDownloadAttempts) {
+            stats.imageUnavailable += 1;
+            log(
+              `[IMAGE-URL] lengths ${input.contentHash.slice(0, 12)}… API could not download ` +
+                `${input.primaryImageUrl} (${attempt} attempt(s)) — no vision estimate possible, ` +
+                `terminal: mark not_estimable`,
+            );
+            return {
+              status: 'image_unavailable',
+              lengthInches: null,
+              rawLengthInches: null,
+              modelConfidence: 0,
+              reasoning: null,
+              anchor,
+              anchorHeightInches,
+              error: (err as Error).message,
+            };
+          }
+        }
+      }
       stats.calls += 1;
       client.meter.record(model, message.usage);
       const text =

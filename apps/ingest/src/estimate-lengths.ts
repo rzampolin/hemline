@@ -123,7 +123,8 @@ async function main(): Promise<void> {
         console.log(
           `[${label}] progress: ${processed}/${targets.length} — running cost ${usd(estimator.costUsd())} ` +
             `(${estimator.stats.estimated} estimated, ${estimator.stats.clamped} clamped, ` +
-            `${estimator.stats.noEstimate} no-estimate, ${estimator.stats.failed} failed)`,
+            `${estimator.stats.noEstimate} no-estimate, ${estimator.stats.imageUnavailable} image-unavailable, ` +
+            `${estimator.stats.failed} failed)`,
         );
       }
     },
@@ -145,7 +146,9 @@ async function main(): Promise<void> {
 
   console.log(
     `[${label}] outcomes: ${result.estimated} estimated, ${result.clamped} clamped to class prior, ` +
-      `${result.noEstimate} not estimable, ${result.failed} failed (still queued)`,
+      `${result.noEstimate} not estimable, ${result.imageUnavailable} image-unavailable ` +
+      `(API can't download the URL — marked not_estimable, terminal), ` +
+      `${result.failed} failed (still queued)`,
   );
   console.log(
     `[${label}] ACTUAL COST: ${usd(estimator.costUsd())} across ${estimator.stats.calls} vision call(s) ` +

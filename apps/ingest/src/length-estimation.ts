@@ -165,6 +165,8 @@ export interface LengthEstimationRunResult {
   estimated: number;
   clamped: number;
   noEstimate: number;
+  /** image URL not downloadable by the API — TERMINAL, marked not_estimable */
+  imageUnavailable: number;
   failed: number;
   /** true when the run stopped early (budget cap / keyless) */
   stopped: boolean;
@@ -195,6 +197,7 @@ export async function runLengthEstimation(
     estimated: 0,
     clamped: 0,
     noEstimate: 0,
+    imageUnavailable: 0,
     failed: 0,
     stopped: false,
   };
@@ -226,11 +229,23 @@ export async function runLengthEstimation(
           break;
         case 'clamped':
         case 'no_estimate':
+        case 'image_unavailable':
           // distrusted / impossible estimate — keep the class prior (inches
           // NULL, and any prior default-anchored inches are withdrawn), but
-          // mark 'not_estimable' so the queue never re-pays for this photo
+          // mark 'not_estimable' so the queue never re-pays for this photo.
+          // image_unavailable is the API-can't-download-the-URL case: the
+          // image is the whole input, so after the estimator's retry budget
+          // the row is terminal too (never 'failed (still queued)' forever) —
+          // logged distinctly for triage.
           if (outcome.status === 'clamped') result.clamped += 1;
-          else result.noEstimate += 1;
+          else if (outcome.status === 'no_estimate') result.noEstimate += 1;
+          else {
+            result.imageUnavailable += 1;
+            logger.warn(
+              `[lengths] ${target.contentHash.slice(0, 12)}… image not downloadable by the API ` +
+                `(${target.primaryImageUrl}) — marked not_estimable (queue drains): ${outcome.error ?? 'unknown'}`,
+            );
+          }
           db.update(extractions)
             .set({
               lengthInches: null,

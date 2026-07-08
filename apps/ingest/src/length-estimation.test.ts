@@ -85,7 +85,7 @@ type OutcomeSeed = Omit<EstimateOutcome, 'anchor' | 'anchorHeightInches'>;
 function fakeEstimator(
   outcome: (hash: string) => OutcomeSeed,
 ): LengthEstimator & { estimateOne: ReturnType<typeof vi.fn> } {
-  const stats = { calls: 0, estimated: 0, clamped: 0, noEstimate: 0, failed: 0 };
+  const stats = { calls: 0, estimated: 0, clamped: 0, noEstimate: 0, imageUnavailable: 0, failed: 0 };
   return {
     mode: 'live',
     stats,
@@ -212,6 +212,34 @@ describe('runLengthEstimation — in-place updates', () => {
     expect(row.lengthBasis).toBe('not_estimable'); // marked distinctly, never re-billed
     // invariant: basis='image_estimate' always implies inches present
     expect(buildLengthEstimateTargets(db)).toHaveLength(0);
+  });
+
+  it("image_unavailable marks the row 'not_estimable' so the queue DRAINS (terminal)", async () => {
+    seed([{ id: 'dead-url' }]);
+    const warns: string[] = [];
+    const logger: Logger = { info: () => {}, warn: (...a) => warns.push(a.map(String).join(' ')), error: () => {} };
+    const result = await runLengthEstimation(
+      db,
+      buildLengthEstimateTargets(db),
+      fakeEstimator(() => ({
+        status: 'image_unavailable',
+        lengthInches: null,
+        rawLengthInches: null,
+        modelConfidence: 0,
+        reasoning: null,
+        error: 'Unable to download the file. Please verify the URL and try again.',
+      })),
+      logger,
+    );
+    expect(result.imageUnavailable).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(result.stopped).toBe(false); // not an all-failure wave — the run continues
+    const row = db.select().from(extractions).where(eq(extractions.contentHash, 'hash-dead-url')).get()!;
+    expect(row.lengthInches).toBeNull();
+    expect(row.lengthBasis).toBe('not_estimable'); // terminal-but-marked
+    // distinct triage log, and — the production bug — no longer 'failed (still queued)':
+    expect(warns.some((w) => w.includes('image not downloadable'))).toBe(true);
+    expect(buildLengthEstimateTargets(db)).toHaveLength(0); // queue drained
   });
 
   it('failed calls stay queued (resumable) and an all-failure wave stops the run', async () => {
