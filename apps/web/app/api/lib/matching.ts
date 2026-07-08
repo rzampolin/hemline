@@ -44,6 +44,7 @@ import type {
   RankResponse,
   UserProfile,
 } from '@hemline/contracts';
+import { makeEmbeddingScorePort } from './embeddings';
 
 // ── shared AI client (one cost meter / budget ledger per process) ─────────
 
@@ -149,6 +150,11 @@ export async function rankForUser(
       client: getAiClient(),
       cache: createRerankCacheStore(db),
     }),
+    // FashionSigLIP style-profile scoring (2026-07-07 ml-eng): average of
+    // liked/saved item embeddings vs each candidate's vector, blended 0.6/0.4
+    // with the attribute score INSIDE the service. undefined (no vectors, no
+    // likes, ml never set up) keeps the pipeline identical to pre-ml behavior.
+    embeddingScore: makeEmbeddingScorePort(db, profile.id),
   });
 
   // NOTE: free-text `query` is applied in SQL only (it searches descriptions,

@@ -86,6 +86,17 @@ const STATEMENTS = [
     raw_response_json   TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS idx_extractions_listing ON extractions(listing_id)`,
+  `CREATE TABLE IF NOT EXISTS listing_embeddings (
+    content_hash TEXT NOT NULL,
+    model        TEXT NOT NULL,
+    listing_id   TEXT NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+    dim          INTEGER NOT NULL,
+    vector       BLOB NOT NULL,
+    image_url    TEXT,
+    embedded_at  INTEGER NOT NULL,
+    PRIMARY KEY (content_hash, model)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_embeddings_listing ON listing_embeddings(listing_id)`,
   `CREATE TABLE IF NOT EXISTS users (
     id            TEXT PRIMARY KEY,
     created_at    INTEGER NOT NULL,

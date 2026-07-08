@@ -111,6 +111,16 @@ export interface SwipeSignal {
   attributeVector: Record<string, number>;
 }
 
+/**
+ * Model tag persisted with every dense embedding row (listing_embeddings.model)
+ * — additive, 2026-07-07 (ml-eng). Single source of truth for TS; ml/embed.py
+ * mirrors it as MODEL_TAG. Bump BOTH together when swapping the model, and old
+ * vectors are simply re-embedded (rows are keyed (content_hash, model)).
+ */
+export const EMBEDDING_MODEL_TAG = 'marqo-fashionSigLIP';
+/** FashionSigLIP output dimension (ViT-B-16-SigLIP tower). */
+export const EMBEDDING_DIM = 768;
+
 export interface StyleSimilarity {
   /** Implementation tag, persisted alongside vectors for future migrations. */
   readonly kind: string;

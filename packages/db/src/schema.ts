@@ -4,6 +4,7 @@
  * functions available for queries). Epoch-ms timestamps are plain INTEGERs.
  */
 import {
+  blob,
   index,
   integer,
   primaryKey,
@@ -158,6 +159,37 @@ export const extractions = sqliteTable(
     rawResponseJson: text('raw_response_json'),
   },
   (t) => [index('idx_extractions_listing').on(t.listingId)],
+);
+
+// ── Visual embeddings (additive, 2026-07-07 ml-eng) ────────────────────
+// Marqo-FashionSigLIP image vectors, keyed like extractions: by content_hash
+// so re-embedding is idempotent, plus the model tag so a model swap coexists
+// with old rows. Vector is a Float32Array serialized as a little-endian BLOB.
+// Scale note: brute-force cosine over ≤10k × 768-d Float32Arrays is <10ms in
+// TS — sqlite-vec is the documented upgrade path when the catalog outgrows it.
+
+export const listingEmbeddings = sqliteTable(
+  'listing_embeddings',
+  {
+    /** matches listings.content_hash at embed time (staleness detector) */
+    contentHash: text('content_hash').notNull(),
+    /** e.g. 'marqo-fashionSigLIP' (contracts EMBEDDING_MODEL_TAG) */
+    model: text('model').notNull(),
+    listingId: text('listing_id')
+      .notNull()
+      .references(() => listings.id, { onDelete: 'cascade' }),
+    /** vector dimension (768 for FashionSigLIP) */
+    dim: integer('dim').notNull(),
+    /** L2-normalized Float32Array bytes (little-endian) */
+    vector: blob('vector', { mode: 'buffer' }).notNull(),
+    /** provenance: which image url was embedded */
+    imageUrl: text('image_url'),
+    embeddedAt: integer('embedded_at').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.contentHash, t.model] }),
+    index('idx_embeddings_listing').on(t.listingId),
+  ],
 );
 
 // ── Users & profiles ───────────────────────────────────────────────────

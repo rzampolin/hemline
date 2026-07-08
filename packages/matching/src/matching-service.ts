@@ -21,6 +21,7 @@ import type {
   UserProfile,
 } from '@hemline/contracts';
 import { hemForUser } from './effective-length';
+import { blendSimilarity } from './embedding';
 import { applyHardFilters, CANDIDATE_CAP } from './filters';
 import { attributeStyleSimilarity, type StyleSimilarity } from './similarity';
 import {
@@ -74,6 +75,14 @@ export interface MatchingPorts {
   rerank?: RerankPort;
   /** Sparse-vector similarity backend; defaults to attribute-v1 cosine. */
   similarity?: StyleSimilarity;
+  /**
+   * Optional dense-embedding similarity port (additive, 2026-07-07 ml-eng):
+   * 0..1 user-vs-listing score from FashionSigLIP vectors, or null when this
+   * listing has no vector. When non-null it blends 0.6·embedding + 0.4·attribute
+   * (EMBEDDING_BLEND_WEIGHT); when absent/null the attribute score stands
+   * alone — the ml-less degradation path.
+   */
+  embeddingScore?: (listing: Listing) => number | null;
   /** Clock injection for tests. */
   now?: () => number;
 }
@@ -108,7 +117,8 @@ export function createMatchingService(ports: MatchingPorts): MatchingService {
       const decay = freshnessDecay(ageDays, halfLifeDaysForSource(listing.sourceId));
       const vector =
         (listing as CandidateWithVector).attributeVector ?? attributeVectorOf(listing);
-      const sim = similarity.score(profile.styleTags, vector);
+      const attrSim = similarity.score(profile.styleTags, vector);
+      const sim = blendSimilarity(attrSim, ports.embeddingScore?.(listing) ?? null);
       const boost = paletteBoost(profile.palette, listing.colors);
       return {
         listing,

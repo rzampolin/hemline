@@ -223,7 +223,10 @@ export const api = {
 
 interface FindSimilarResponse {
   attributes: Record<string, number>;
-  extractionMode: 'live' | 'mock';
+  /** 'skipped' when the FashionSigLIP visual path answered (no extraction ran) */
+  extractionMode: 'live' | 'mock' | 'skipped';
+  /** additive: which similarity backend produced the ranking */
+  matchBasis?: 'embedding' | 'attributes';
   fallback: 'none' | 'nearest';
   items: RankedListing[];
   totalMatched: number;

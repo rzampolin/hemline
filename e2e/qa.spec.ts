@@ -5,7 +5,7 @@
  * palette-parity, stale-save flag) run in real mode only, where the seeded
  * SQLite db + real routes are behind the page. Screenshots → e2e/screenshots/qa/.
  */
-import { test, expect, type Page, type Browser } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 const SHOT_DIR = 'e2e/screenshots/qa';
 const shot = (page: Page, name: string) =>
