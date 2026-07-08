@@ -15,6 +15,14 @@ describe('normalizeSizeLabel', () => {
     expect(normalizeSizeLabel('7')).toEqual([6, 8]);
   });
 
+  it('parses SFCC zero-padded labels (Reformation, decisions-data-eng #23)', () => {
+    expect(normalizeSizeLabel('002')).toEqual([2]);
+    expect(normalizeSizeLabel('010')).toEqual([10]);
+    expect(normalizeSizeLabel('0XS')).toEqual([0, 2]);
+    expect(normalizeSizeLabel('00S')).toEqual([4, 6]);
+    expect(normalizeSizeLabel('000')).toEqual([0]); // bare zeros still size 0
+  });
+
   it('maps alpha sizes per the fixture convention', () => {
     expect(normalizeSizeLabel('XS')).toEqual([0, 2]);
     expect(normalizeSizeLabel('S')).toEqual([4, 6]);

@@ -24,8 +24,13 @@ const ALPHA_MAP: Record<string, number[]> = {
   '3X': [24, 26],
 };
 
-/** e.g. "US 8", "8", "08", "00", "Size 10" → US numeric size */
-const NUMERIC_RE = /^(?:us\s*|size\s*)?(\d{1,2})$/i;
+/**
+ * e.g. "US 8", "8", "08", "00", "Size 10" → US numeric size.
+ * Leading zeros are consumed separately so SFCC-padded labels ("002", "010",
+ * Reformation et al. — decisions-data-eng.md #23) parse to their real size;
+ * backtracking still lets bare "0"/"00" capture as size 0.
+ */
+const NUMERIC_RE = /^(?:us\s*|size\s*)?0*(\d{1,2})$/i;
 
 /** Normalize one raw size label to zero-or-more US numeric sizes. */
 export function normalizeSizeLabel(label: string): number[] {
@@ -39,7 +44,8 @@ export function normalizeSizeLabel(label: string): number[] {
     if (n <= 26) return [n - 1, n + 1]; // odd (juniors) sizes straddle
     return [];
   }
-  const alpha = ALPHA_MAP[t.toUpperCase().replace(/[\s.+]+$/, '')];
+  // "0XS" / "00S" (SFCC zero-padded alpha labels) → "XS" / "S"
+  const alpha = ALPHA_MAP[t.toUpperCase().replace(/[\s.+]+$/, '').replace(/^0+(?=[A-Z])/, '')];
   return alpha ?? [];
 }
 
