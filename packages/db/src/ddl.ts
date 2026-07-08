@@ -70,6 +70,8 @@ const STATEMENTS = [
     length_class        TEXT,
     length_inches       REAL,
     length_basis        TEXT,
+    length_anchor       TEXT,
+    length_anchor_height_in REAL,
     measurements_json   TEXT NOT NULL DEFAULT '{}',
     colors_json         TEXT NOT NULL DEFAULT '[]',
     fabric              TEXT,
@@ -150,6 +152,8 @@ const STATEMENTS = [
  */
 const ADDITIVE_COLUMNS: Array<{ table: string; column: string; ddl: string }> = [
   { table: 'extractions', column: 'length_basis', ddl: `ALTER TABLE extractions ADD COLUMN length_basis TEXT` },
+  { table: 'extractions', column: 'length_anchor', ddl: `ALTER TABLE extractions ADD COLUMN length_anchor TEXT` },
+  { table: 'extractions', column: 'length_anchor_height_in', ddl: `ALTER TABLE extractions ADD COLUMN length_anchor_height_in REAL` },
 ];
 
 /** Create all core tables/indexes if absent. Idempotent. */

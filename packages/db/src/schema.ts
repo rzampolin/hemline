@@ -122,11 +122,21 @@ export const extractions = sqliteTable(
     lengthInches: real('length_inches'),
     /**
      * Provenance of length_inches: 'stated' (seller text) | 'image_estimate'
-     * (Haiku vision pass). NULL means stated (legacy rows) — or, when
-     * length_inches is also NULL, that no estimation attempt has been made yet
-     * (the extract:lengths queue predicate).
+     * (Haiku vision pass, inches ALWAYS present) | 'not_estimable' (vision
+     * pass attempted but clamped/not-estimable — inches ALWAYS NULL). NULL
+     * means stated (legacy rows) — or, when length_inches is also NULL, that
+     * no estimation attempt has been made yet (the extract:lengths queue
+     * predicate).
      */
     lengthBasis: text('length_basis'),
+    /**
+     * Additive (length-estimation v2): which model-height anchor grounded the
+     * vision estimate — 'stated_model_height' (parsed from listing text) |
+     * 'assumed_default' (5'9" assumption). NULL on non-vision/legacy rows.
+     */
+    lengthAnchor: text('length_anchor'),
+    /** anchor model height in inches (e.g. 70 for a stated 5'10"; 69 default) */
+    lengthAnchorHeightIn: real('length_anchor_height_in'),
     /** {bust,waist,hip,length} inches, all nullable */
     measurementsJson: text('measurements_json').notNull().default('{}'),
     /** [{name,family,hex?}] */
