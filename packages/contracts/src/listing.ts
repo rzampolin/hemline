@@ -63,10 +63,14 @@ export type ColorTag = z.infer<typeof ColorTagSchema>;
  * Provenance of `lengthInches` (additive, 2026-07-07 ai-eng):
  * 'stated' — parsed/extracted from seller text (§5 fallback 1 → confidence 'high');
  * 'image_estimate' — Haiku vision estimate from the product photo
- * (§5 fallback 1 → confidence 'medium'; UI must style as estimated, never "Measured").
+ * (§5 fallback 1 → confidence 'medium'; UI must style as estimated, never "Measured");
+ * 'not_estimable' — the vision pass was attempted but produced no trustworthy
+ * inches (clamped against the class prior, or not estimable from the photo).
+ * `lengthInches` is ALWAYS null with this basis — 'image_estimate' now always
+ * implies inches present. (Additive enum value, length-estimation v2.)
  * Absent/null is treated as 'stated' for backward compatibility.
  */
-export const LengthBasisSchema = z.enum(['stated', 'image_estimate']);
+export const LengthBasisSchema = z.enum(['stated', 'image_estimate', 'not_estimable']);
 export type LengthBasis = z.infer<typeof LengthBasisSchema>;
 
 /** Output of the AI extraction pipeline (doc §4.3). Also used as `attributeHints`. */

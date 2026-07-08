@@ -497,6 +497,11 @@ export {
   type ParsedMeasurements,
 } from './measurements';
 export {
+  parseModelInfo,
+  MODEL_HEIGHT_RANGE_IN,
+  type ParsedModelInfo,
+} from './model-height';
+export {
   buildAttributeVector,
   lengthClassFromInches,
   NECKLINES,

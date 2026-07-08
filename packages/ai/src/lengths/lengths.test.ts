@@ -9,9 +9,13 @@ import {
   buildLengthEstimationUserText,
   clampLengthEstimate,
   createLengthEstimator,
+  DEFAULT_LANDMARKS_IN,
+  DEFAULT_MODEL_HEIGHT_IN,
+  formatFeetInches,
   LENGTH_CLASS_BANDS_IN,
   LENGTH_ESTIMATION_SYSTEM_PROMPT,
   LengthEstimateOutputSchema,
+  scaleLandmarks,
   type LengthEstimateInput,
 } from './index';
 
@@ -90,6 +94,44 @@ describe('prompt & schema shape', () => {
     expect(text).toContain('Silk Midi Dress');
     expect(text).toContain('midi');
     expect(text).toContain('slip');
+    expect(text).not.toContain('MODEL HEIGHT'); // no stated height → default anchor only
+  });
+
+  it('prompt teaches the stated-height override (v2 anchoring)', () => {
+    expect(LENGTH_ESTIMATION_SYSTEM_PROMPT).toContain('MODEL HEIGHT (stated on the listing)');
+  });
+});
+
+describe('v2 anchoring — scaled landmarks & anchored user text', () => {
+  it('scales the 69" landmarks linearly to the stated height', () => {
+    // 5'10" model: everything × 70/69
+    expect(scaleLandmarks(70)).toEqual({ shoulder: 57.3, knee: 19.8, midCalf: 11.2, ankle: 3 });
+    // identity at the default anchor
+    expect(scaleLandmarks(DEFAULT_MODEL_HEIGHT_IN)).toEqual({ ...DEFAULT_LANDMARKS_IN });
+    // petite-end sanity: 5'2" scales down
+    expect(scaleLandmarks(62).shoulder).toBeCloseTo(50.8, 1);
+  });
+
+  it('formats heights for the prompt', () => {
+    expect(formatFeetInches(70)).toBe(`5'10"`);
+    expect(formatFeetInches(69)).toBe(`5'9"`);
+    expect(formatFeetInches(68.9)).toBe(`5'8.9"`);
+  });
+
+  it('stated height → user text anchors on it with scaled landmarks + size worn', () => {
+    const text = buildLengthEstimationUserText({
+      contentHash: 'h',
+      primaryImageUrl: 'https://cdn/x.jpg',
+      title: 'Sylvie Midi Dress',
+      lengthClass: 'midi',
+      statedModelHeightInches: 70,
+      modelSizeWorn: 'S',
+    });
+    expect(text).toContain('MODEL HEIGHT (stated on the listing): 70"');
+    expect(text).toContain(`5'10"`);
+    expect(text).toContain('57.3'); // scaled shoulder
+    expect(text).toContain('19.8'); // scaled knee
+    expect(text).toContain('MODEL WEARS SIZE: S');
   });
 });
 
@@ -160,6 +202,46 @@ describe('createLengthEstimator', () => {
       .mockResolvedValue(fakeResponse({ lengthInches: null, confidence: 0, reasoning: 'flat lay' }));
     const estimator = createLengthEstimator({ client: liveClientWith(create), logger: () => {} });
     expect((await estimator.estimateOne(anInput)).status).toBe('no_estimate');
+  });
+
+  it('records the default anchor when no stated height exists', async () => {
+    const create = vi
+      .fn()
+      .mockResolvedValue(fakeResponse({ lengthInches: 39, confidence: 0.8, reasoning: null }));
+    const estimator = createLengthEstimator({ client: liveClientWith(create), logger: () => {} });
+    const result = await estimator.estimateOne(anInput);
+    expect(result.anchor).toBe('assumed_default');
+    expect(result.anchorHeightInches).toBe(69);
+  });
+
+  it('stated model height → anchored prompt and anchor recorded on the result', async () => {
+    const create = vi
+      .fn()
+      .mockResolvedValue(fakeResponse({ lengthInches: 40, confidence: 0.8, reasoning: 'knee' }));
+    const estimator = createLengthEstimator({ client: liveClientWith(create), logger: () => {} });
+    const result = await estimator.estimateOne({
+      ...anInput,
+      statedModelHeightInches: 70.5,
+      modelSizeWorn: 'S',
+    });
+
+    expect(result.status).toBe('estimated');
+    expect(result.anchor).toBe('stated_model_height');
+    expect(result.anchorHeightInches).toBe(70.5);
+    const sentText = create.mock.calls[0][0].messages[0].content[1].text as string;
+    expect(sentText).toContain('MODEL HEIGHT (stated on the listing): 70.5"');
+    expect(sentText).toContain('MODEL WEARS SIZE: S');
+  });
+
+  it('anchor rides along on clamped/no-estimate/failed outcomes too', async () => {
+    const create = vi
+      .fn()
+      .mockResolvedValue(fakeResponse({ lengthInches: null, confidence: 0, reasoning: 'flat lay' }));
+    const estimator = createLengthEstimator({ client: liveClientWith(create), logger: () => {} });
+    const result = await estimator.estimateOne({ ...anInput, statedModelHeightInches: 72 });
+    expect(result.status).toBe('no_estimate');
+    expect(result.anchor).toBe('stated_model_height');
+    expect(result.anchorHeightInches).toBe(72);
   });
 
   it('API error → failed (left queued for resume)', async () => {
