@@ -171,3 +171,28 @@ doc was ambiguous, contradictory, or silent. Everything else follows the doc.
     resume instructions. `.env` `AI_DAILY_BUDGET_USD` raised 5 → 10 for
     today's two passes (~$0.4 upgrade + ~$3 lengths on top of ~$2 already
     spent would trip the $5 cap); `.env.example` default stays 5.
+
+22. **Length estimation v2 — stated model heights (2026-07-07).** Many brand
+    PDPs state the vision pass's missing anchor ("Model is 5'10" and wears a
+    size S" — Staud, Reformation, Sister Jane…). A free deterministic parser
+    (`packages/ai/src/extraction/model-height.ts`, exported `parseModelInfo`)
+    extracts {modelHeightInches, modelSizeWorn} from title+description:
+    feet'inches (straight/unicode quotes/primes), "5 ft 10", "5 feet 10
+    inches", 175cm/175 cm; model context required near the number ("model",
+    "she", "mannequin", "height"…), garment-measurement labels directly before
+    the number veto it ("Length: 175 cm"), sanity range 5'2"–6'2". When a
+    stated height exists the vision prompt anchors on THAT height with
+    linearly scaled body landmarks (69" baseline: shoulder 56.5", knee 19.5",
+    mid-calf 11", ankle 3" — × h/69) and the anchor is recorded in new
+    additive `extractions.length_anchor` ('stated_model_height' |
+    'assumed_default') + `length_anchor_height_in` columns (drizzle schema +
+    ddl.ts ADDITIVE_COLUMNS). `npm run extract:lengths -- --reanchor` re-runs
+    default-anchored image estimates whose stated height is ≥1" off 69"
+    (below that the correction drowns in the estimate's own noise); the free
+    parser coverage is printed BEFORE the cost quote. Bookkeeping fix riding
+    along: v1 wrote clamped/not-estimable attempts as
+    length_basis='image_estimate' with NULL inches; those are migrated (no
+    API calls) to the new additive `LengthBasis` value **'not_estimable'**,
+    so basis='image_estimate' now always implies inches present (matching/UI
+    only ever branch on 'image_estimate' when inches exist, so the new value
+    is invisible to them).
