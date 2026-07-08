@@ -19,6 +19,8 @@
     "ingest:watch": "node --env-file-if-exists=.env --import tsx apps/ingest/src/schedule.ts",
     "extract:upgrade": "node --env-file-if-exists=.env --import tsx apps/ingest/src/upgrade.ts",
     "extract:lengths": "node --env-file-if-exists=.env --import tsx apps/ingest/src/estimate-lengths.ts",
+    "ml:setup": "bash ml/setup.sh",
+    "embed": "node --env-file-if-exists=.env --import tsx apps/ingest/src/embed.ts",
     "db:migrate": "mkdir -p data && drizzle-kit push",
     "db:seed": "tsx packages/db/src/seed.ts",
     "db:studio": "drizzle-kit studio",

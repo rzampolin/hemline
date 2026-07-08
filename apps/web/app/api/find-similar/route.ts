@@ -2,25 +2,41 @@
  * POST /api/find-similar — "Find dresses like this" (spec B4).
  * Body: multipart (`photo` file) | JSON { imageBase64?, imageUrl?, hint? }.
  *
- * Pipeline: attribute extraction via the REAL @hemline/ai ExtractionService
- * (Haiku when ANTHROPIC_API_KEY is set; the deterministic rule engine keyless
- * — degradation lives inside packages/ai, §7.5) → cosine similarity over the
- * catalog's sparse attribute vectors → "nearest" fallback so the response is
- * never empty when the catalog isn't.
+ * Two-tier pipeline (2026-07-07 ml-eng):
+ *  1. VISUAL (when `npm run ml:setup` + `npm run embed` have run): the probe
+ *     (photo bytes / image url / free text — SigLIP is a dual encoder) is
+ *     embedded by the Marqo-FashionSigLIP sidecar and ranked by cosine against
+ *     the stored catalog vectors. `matchBasis: 'embedding'`.
+ *  2. FALLBACK (no ml setup, no vectors, or sidecar failure): the original
+ *     path, unchanged — attribute extraction via @hemline/ai (Haiku live,
+ *     deterministic rule engine keyless, §7.5) → sparse-vector cosine →
+ *     "nearest" fallback. `matchBasis: 'attributes'`.
  *
- * Uploaded bytes are analyzed in memory and discarded — never persisted.
- * `extractionMode` reports the service's honest mode: 'live' | 'mock'.
+ * Uploaded bytes are analyzed in memory and discarded — never persisted
+ * (the embedding sidecar receives them over stdin, also never persisted).
+ * `extractionMode` reports the extractor's honest mode: 'live' | 'mock' —
+ * or 'skipped' when the visual path answered without any extraction.
  */
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { RankedListing } from '@hemline/contracts';
 import { createExtractionService } from '@hemline/ai';
-import { getUserProfile, queryCandidates, type CandidateListing } from '@hemline/db';
+import {
+  getListingsByIds,
+  getUserProfile,
+  queryCandidates,
+  type CandidateListing,
+} from '@hemline/db';
 import { cosineSimilarity } from '@hemline/matching';
+import type { EmbedRequest } from '@hemline/matching/embedder';
 import { getDb } from '../lib/db';
+import { findSimilarByEmbedding } from '../lib/embeddings';
 import { fail, ok, serverError, zodFail } from '../lib/envelope';
 import { getAiClient, hemForUser, paletteMatches } from '../lib/matching';
 import { requireUserId } from '../lib/session';
+
+/** Reject absurd uploads before base64-ing them for the sidecar. */
+const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -71,6 +87,7 @@ export async function POST(req: Request) {
     if (!userId) return fail('no_session', 'No session — call GET /api/session first', 401);
 
     let imageUrl: string | null = null;
+    let imageBase64: string | null = null;
     let text = '';
     let limit = 24;
     const contentType = req.headers.get('content-type') ?? '';
@@ -78,9 +95,14 @@ export async function POST(req: Request) {
       const form = await req.formData();
       const file = form.get('photo');
       if (!(file instanceof Blob)) return fail('invalid_request', 'multipart field `photo` (file) is required', 400);
-      // bytes read in-memory and discarded; keyless extraction keys off the
-      // filename/hint text (live mode would need a fetchable URL for vision)
-      await file.arrayBuffer();
+      // bytes read in-memory and discarded (embedding probe only); keyless
+      // extraction keys off the filename/hint text (live mode would need a
+      // fetchable URL for vision)
+      const bytes = await file.arrayBuffer();
+      if (bytes.byteLength > MAX_PHOTO_BYTES) {
+        return fail('invalid_request', 'photo too large (max 8 MB)', 400);
+      }
+      if (bytes.byteLength > 0) imageBase64 = Buffer.from(bytes).toString('base64');
       text = [form.get('hint'), file instanceof File ? file.name : '']
         .filter((v): v is string => typeof v === 'string')
         .join(' ');
@@ -94,12 +116,48 @@ export async function POST(req: Request) {
       const parsed = JsonBodySchema.safeParse(raw);
       if (!parsed.success) return zodFail(parsed.error);
       imageUrl = parsed.data.imageUrl ?? null;
+      imageBase64 = parsed.data.imageBase64 ?? null;
       text = [parsed.data.hint, parsed.data.imageUrl].filter(Boolean).join(' ');
       limit = parsed.data.limit;
     }
 
-    const { vector, mode } = await extractProbeVector(text, imageUrl);
     const profile = getUserProfile(db, userId);
+
+    // ── tier 1: real visual similarity (FashionSigLIP), when available ────
+    const probe: EmbedRequest | null = imageBase64
+      ? { imageBase64 }
+      : imageUrl
+        ? { imageUrl }
+        : text.trim()
+          ? { op: 'text', text: text.trim() }
+          : null;
+    if (probe) {
+      const matches = await findSimilarByEmbedding(db, probe, limit);
+      if (matches && matches.length > 0) {
+        const byId = new Map(matches.map((m) => [m.listingId, m.score]));
+        const items: RankedListing[] = getListingsByIds(db, matches.map((m) => m.listingId)).map(
+          (c) => ({
+            listing: c.listing,
+            hem: hemForUser(c.listing, profile?.heightInches ?? null, profile?.heelPrefInches ?? 0),
+            score: Math.max(0, Math.min(1, byId.get(c.listing.id) ?? 0)),
+            whyItWorks: null,
+            freshnessDecay: 1,
+            paletteMatch: profile ? paletteMatches(profile, c.listing) : undefined,
+          }),
+        );
+        return ok({
+          attributes: {},
+          extractionMode: 'skipped', // visual path — no attribute extraction ran
+          matchBasis: 'embedding',
+          fallback: 'none',
+          items,
+          totalMatched: items.length,
+        });
+      }
+    }
+
+    // ── tier 2: attribute-vector path (unchanged; works with zero ml setup) ─
+    const { vector, mode } = await extractProbeVector(text, imageUrl);
     const pool = queryCandidates(db, {});
 
     let matched = pool
@@ -129,6 +187,7 @@ export async function POST(req: Request) {
     return ok({
       attributes: vector,
       extractionMode: mode, // 'live' | 'mock' — the ai package's honest mode
+      matchBasis: 'attributes',
       fallback,
       items,
       totalMatched: matched.length,
