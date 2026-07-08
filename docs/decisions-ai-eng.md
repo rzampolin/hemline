@@ -132,3 +132,42 @@ doc was ambiguous, contradictory, or silent. Everything else follows the doc.
     default to Sonnet pricing (conservative). Budget check happens before
     every live wave/call; crossing `AI_DAILY_BUDGET_USD` (default 5) flips
     `effectiveMode()` to 'mock' mid-run.
+
+19. **Enum-validation recovery ladder (2026-07-07).** Live Haiku occasionally
+    emits enum values outside the closed vocabularies even under structured
+    outputs (observed: silhouette, occasions items) — previously the whole
+    extraction fell back to mock (129/1,203 on the first live pass). The
+    service now: validates → retries ONCE with the Zod issues fed back
+    (user/assistant/user turn) → deterministically COERCES (invalid enum →
+    'other' where the enum has it, else null; invalid array items dropped;
+    `coerce.ts`) → only then mock-falls-back with a loud `[FALLBACK]` log
+    carrying the full content hash. Counters (`ExtractionRunStats`: liveCalls/
+    retries/retrySuccesses/coercions/fallbacks/mock/cacheHits) + `costUsd()`
+    ride on the returned service (`ExtractionServiceWithStats`, additive —
+    the frozen `ExtractionService` contract is unchanged).
+
+20. **Vision length-estimation pass (`npm run extract:lengths`, 2026-07-07).**
+    Brand sites don't state HPS inches (~1% coverage), so a FOCUSED second
+    pass (`packages/ai/src/lengths`) makes one Haiku vision call per
+    extraction row with `length_inches IS NULL` + a primary image: grounded
+    prompt (fashion models ~5'9"/175 cm anchor, shoulder-to-hem, self-assessed
+    confidence), schema-constrained `{lengthInches, confidence, reasoning}`.
+    Estimates are sanity-clamped against the §5 class prior bands (±2″
+    tolerance; a "mini" at 55″ is distrusted → class prior kept, low
+    confidence). Results persist with the new additive
+    `ExtractedAttributes.lengthBasis`/`extractions.length_basis` column
+    ('stated' | 'image_estimate'); matching maps 'image_estimate' →
+    `computeHem(lengthSource:'image_estimate')` → confidence 'medium'
+    (§5 fallback 1), and the UI only shows the solid "Measured" treatment at
+    basis='measured_length' AND confidence='high'. Idempotency: every
+    attempted row gets length_basis='image_estimate' (clamped/no-estimate rows
+    keep NULL inches → hem honestly falls back to the class prior), failed
+    calls stay queued; `model IN ('manual','fixture')` rows are never touched.
+
+21. **CLI cost reporting (2026-07-07).** `extract:upgrade` and
+    `extract:lengths` print an UPFRONT estimate (N × per-item estimate with
+    the token assumptions stated), running cost in progress lines, and the
+    ACTUAL metered total at completion; budget-capped runs stop cleanly with
+    resume instructions. `.env` `AI_DAILY_BUDGET_USD` raised 5 → 10 for
+    today's two passes (~$0.4 upgrade + ~$3 lengths on top of ~$2 already
+    spent would trip the $5 cap); `.env.example` default stays 5.

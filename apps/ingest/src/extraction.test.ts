@@ -27,6 +27,24 @@ vi.mock('@hemline/ai', () => ({
   createExtractionService: vi.fn(),
 }));
 
+/** Minimal run-observability shape (ExtractionServiceWithStats additions). */
+const emptyStats = () => ({
+  liveCalls: 0,
+  retries: 0,
+  retrySuccesses: 0,
+  coercions: 0,
+  fallbacks: 0,
+  mockExtractions: 0,
+  cacheHits: 0,
+});
+const withStats = (
+  service: import('@hemline/contracts').ExtractionService,
+): import('@hemline/ai').ExtractionServiceWithStats => ({
+  ...service,
+  stats: emptyStats(),
+  costUsd: () => 0,
+});
+
 let db: Db;
 let cleanup: () => void;
 beforeEach(async () => {
@@ -99,15 +117,15 @@ describe('extraction queue', () => {
   it('writes extraction rows via the ExtractionService and drains the queue', async () => {
     await seedTwoListings();
     const { createExtractionService } = await import('@hemline/ai');
-    vi.mocked(createExtractionService).mockReturnValue({
+    vi.mocked(createExtractionService).mockReturnValue(withStats({
       mode: 'mock',
       extractBatch: async (inputs) =>
         new Map(inputs.map((i) => [i.contentHash, fakeAttrs()])),
-    });
+    }));
 
     const inputs = buildPendingExtractionInputs(db, ['test-src']);
     const outcome = await runExtraction(db, inputs, silent);
-    expect(outcome).toEqual({ extracted: 2, pending: 0 });
+    expect(outcome).toMatchObject({ extracted: 2, pending: 0 });
 
     const rows = db.select().from(extractions).all();
     expect(rows).toHaveLength(2);
@@ -121,11 +139,11 @@ describe('extraction queue', () => {
   it('records the live model name when the service is live', async () => {
     await seedTwoListings();
     const { createExtractionService } = await import('@hemline/ai');
-    vi.mocked(createExtractionService).mockReturnValue({
+    vi.mocked(createExtractionService).mockReturnValue(withStats({
       mode: 'live',
       extractBatch: async (inputs) =>
         new Map(inputs.map((i) => [i.contentHash, fakeAttrs()])),
-    });
+    }));
     await runExtraction(db, buildPendingExtractionInputs(db, ['test-src']), silent, {
       EXTRACTION_MODEL: 'claude-haiku-4-5-20251001',
     } as NodeJS.ProcessEnv);
@@ -136,16 +154,16 @@ describe('extraction queue', () => {
   it('leaves listings pending when the service throws (stub-safe)', async () => {
     await seedTwoListings();
     const { createExtractionService } = await import('@hemline/ai');
-    vi.mocked(createExtractionService).mockReturnValue({
+    vi.mocked(createExtractionService).mockReturnValue(withStats({
       mode: 'mock',
       extractBatch: async () => {
         throw new Error('not yet implemented (ai-eng)');
       },
-    });
+    }));
 
     const inputs = buildPendingExtractionInputs(db, ['test-src']);
     const outcome = await runExtraction(db, inputs, silent);
-    expect(outcome).toEqual({ extracted: 0, pending: 2 });
+    expect(outcome).toMatchObject({ extracted: 0, pending: 2 });
     expect(db.select().from(extractions).all()).toHaveLength(0);
     // still queued for the next run
     expect(buildPendingExtractionInputs(db, ['test-src'])).toHaveLength(2);
@@ -154,11 +172,11 @@ describe('extraction queue', () => {
   it('never overwrites an existing extraction row (ai-eng owns the cache)', async () => {
     await seedTwoListings();
     const { createExtractionService } = await import('@hemline/ai');
-    vi.mocked(createExtractionService).mockReturnValue({
+    vi.mocked(createExtractionService).mockReturnValue(withStats({
       mode: 'mock',
       extractBatch: async (inputs) =>
         new Map(inputs.map((i) => [i.contentHash, fakeAttrs(0.1)])),
-    });
+    }));
     const inputs = buildPendingExtractionInputs(db, ['test-src']);
     await runExtraction(db, inputs, silent);
 
@@ -212,11 +230,11 @@ describe('pipeline extraction integration', () => {
   it('deleteMockExtractions re-queues mock rows but never manual or fixture rows', async () => {
     await seedTwoListings();
     const { createExtractionService } = await import('@hemline/ai');
-    vi.mocked(createExtractionService).mockReturnValue({
+    vi.mocked(createExtractionService).mockReturnValue(withStats({
       mode: 'mock',
       extractBatch: async (inputs) =>
         new Map(inputs.map((i) => [i.contentHash, fakeAttrs()])),
-    });
+    }));
     // both listings get mock rows; then hand-correct listing A (spec G2)
     await runExtraction(db, buildPendingExtractionInputs(db, ['test-src']), silent);
     db.update(extractions)

@@ -115,6 +115,18 @@ export interface ExtractionOutcome {
   extracted: number;
   /** listings still awaiting extraction (service missing/failed or not returned) */
   pending: number;
+  /** validation-recovery counters from the service, when it exposes them */
+  stats?: {
+    liveCalls: number;
+    retries: number;
+    retrySuccesses: number;
+    coercions: number;
+    fallbacks: number;
+    mockExtractions: number;
+    cacheHits: number;
+  };
+  /** live spend (USD) recorded by the service's cost meter for this run */
+  costUsd?: number;
 }
 
 export async function runExtraction(
@@ -130,7 +142,10 @@ export async function runExtraction(
     const ai = (await import('@hemline/ai')) as {
       createExtractionService?: (opts?: {
         cache?: ReturnType<typeof createExtractionCacheStore>;
-      }) => import('@hemline/contracts').ExtractionService;
+      }) => import('@hemline/contracts').ExtractionService & {
+        stats?: ExtractionOutcome['stats'];
+        costUsd?: () => number;
+      };
     };
     if (typeof ai.createExtractionService !== 'function') {
       throw new Error('@hemline/ai does not export createExtractionService');
@@ -158,6 +173,7 @@ export async function runExtraction(
           model,
           lengthClass: attrs.lengthClass,
           lengthInches: attrs.lengthInches,
+          lengthBasis: attrs.lengthBasis ?? (attrs.lengthInches != null ? 'stated' : null),
           measurementsJson: JSON.stringify(attrs.measurements),
           colorsJson: JSON.stringify(attrs.colors),
           fabric: attrs.fabric,
@@ -177,7 +193,12 @@ export async function runExtraction(
     }
     const pending = inputs.length - extracted;
     logger.info(`[extract] ${extracted} extracted (${service.mode}), ${pending} pending`);
-    return { extracted, pending };
+    return {
+      extracted,
+      pending,
+      stats: service.stats,
+      costUsd: typeof service.costUsd === 'function' ? service.costUsd() : undefined,
+    };
   } catch (e) {
     logger.warn(
       `[extract] extraction service unavailable — ${inputs.length} listings left pending (retried next run): ${e instanceof Error ? e.message : String(e)}`,
