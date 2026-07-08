@@ -34,6 +34,31 @@ npm run dev                   # Next.js on http://localhost:3000
 | `npm run test:e2e` | Playwright e2e *(stub — frontend-eng)* |
 | `npm run typecheck` | `tsc --noEmit` in every workspace |
 | `npm run lint` | ESLint |
+| `npm run ml:setup` | One-time: builds the local visual-embedding sidecar (see below) |
+| `npm run embed` | Batch-embed catalog images with FashionSigLIP (local, $0) |
+
+## ML setup (optional — real visual similarity)
+
+One command builds a local Python sidecar running
+[Marqo-FashionSigLIP](https://huggingface.co/Marqo/marqo-fashionSigLIP)
+(Apache 2.0, open weights) for true image similarity + free-text visual search:
+
+```bash
+npm run ml:setup   # creates ml/.venv (~820 MB), downloads the model (~780 MB), ~5 min once
+npm run embed      # embeds catalog images → vectors in SQLite (local compute, no API cost)
+```
+
+Requires python3 ≥ 3.10 (macOS arm64 uses torch's MPS backend automatically).
+After that: "find dresses like this" photo uploads and text searches are ranked
+by real visual similarity, and your like/save swipes build a visual style
+profile that blends into feed ranking (60/40 with the attribute score).
+
+**Everything works without it.** No python, no venv, no vectors → the app
+degrades exactly like the keyless-AI story: find-similar uses Claude/rule-based
+attribute extraction + sparse tag cosine, and ranking uses attribute vectors
+only. `npm run embed` will just tell you to run `npm run ml:setup`.
+Fixture listings use placeholder images and are deliberately never embedded —
+visual search covers real ingested listings.
 
 ## Ownership
 

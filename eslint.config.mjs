@@ -9,6 +9,8 @@ export default tseslint.config(
       '.claude/**',
       '**/dist/**',
       'data/**',
+      'ml/.venv/**',
+      'ml/.cache/**',
       '**/next-env.d.ts',
     ],
   },
