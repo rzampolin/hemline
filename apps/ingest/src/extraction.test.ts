@@ -1,7 +1,8 @@
+import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExtractedAttributes, Logger } from '@hemline/contracts';
 import { extractions, type Db } from '@hemline/db';
-import { buildPendingExtractionInputs, runExtraction } from './extraction';
+import { buildPendingExtractionInputs, deleteMockExtractions, runExtraction } from './extraction';
 import { runPipeline } from './pipeline';
 import { createTestDb } from './testing/test-db';
 
@@ -206,5 +207,32 @@ describe('pipeline extraction integration', () => {
     expect(result.status).toBe('ok'); // extraction failure never fails ingest
     expect(result.stats.extracted).toBe(0);
     expect(result.stats.extractionPending).toBe(1);
+  });
+
+  it('deleteMockExtractions re-queues mock rows but never manual or fixture rows', async () => {
+    await seedTwoListings();
+    const { createExtractionService } = await import('@hemline/ai');
+    vi.mocked(createExtractionService).mockReturnValue({
+      mode: 'mock',
+      extractBatch: async (inputs) =>
+        new Map(inputs.map((i) => [i.contentHash, fakeAttrs()])),
+    });
+    // both listings get mock rows; then hand-correct listing A (spec G2)
+    await runExtraction(db, buildPendingExtractionInputs(db, ['test-src']), silent);
+    db.update(extractions)
+      .set({ model: 'manual' })
+      .where(eq(extractions.listingId, 'test-src:A'))
+      .run();
+
+    // upgrade path: only B's mock row is cleared and re-queued
+    expect(deleteMockExtractions(db, ['test-src'])).toBe(1);
+    const pending = buildPendingExtractionInputs(db, ['test-src']);
+    expect(pending.map((p) => p.listingId)).toEqual(['test-src:B']);
+    // A's manual correction is untouched
+    const rows = db.select().from(extractions).all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].model).toBe('manual');
+    // scoped: other sources' rows are never touched
+    expect(deleteMockExtractions(db, ['other-src'])).toBe(0);
   });
 });

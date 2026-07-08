@@ -86,6 +86,30 @@ export function buildPendingExtractionInputs(
   }));
 }
 
+/**
+ * Delete `model='mock'` extraction rows for the given sources so the queue
+ * re-picks those listings — the upgrade path from keyless dev to live Haiku
+ * (`npm run extract:upgrade`). `manual` (spec G2) and `fixture` (seed ground
+ * truth) rows are never touched, and a listing that also carries a manual row
+ * stays excluded from the queue via buildPendingExtractionInputs.
+ */
+export function deleteMockExtractions(db: Db, sourceIds: string[]): number {
+  if (sourceIds.length === 0) return 0;
+  const result = db
+    .delete(extractions)
+    .where(
+      and(
+        eq(extractions.model, 'mock'),
+        inArray(
+          extractions.listingId,
+          db.select({ id: listings.id }).from(listings).where(inArray(listings.sourceId, sourceIds)),
+        ),
+      ),
+    )
+    .run();
+  return result.changes;
+}
+
 export interface ExtractionOutcome {
   /** rows written to `extractions` this run */
   extracted: number;
