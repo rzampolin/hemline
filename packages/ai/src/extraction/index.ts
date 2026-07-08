@@ -22,6 +22,7 @@ import {
   type ExtractionService,
 } from '@hemline/contracts';
 import { createAiClient, type AiClient } from '../client';
+import { coerceExtractionOutput } from './coerce';
 import { measurementsAgree, parseMeasurements, type ParsedMeasurements } from './measurements';
 import { mockExtract } from './mock';
 import {
@@ -59,6 +60,34 @@ export class InMemoryExtractionCache implements ExtractionCacheStore {
   }
 }
 
+/**
+ * Per-run counters for the CLI to report (Task: enum-validation fallback fix).
+ * All counts are cumulative over the service instance's lifetime.
+ */
+export interface ExtractionRunStats {
+  /** live API calls made (first attempts + retries) */
+  liveCalls: number;
+  /** first-attempt validation failures that triggered the ONE feedback retry */
+  retries: number;
+  /** retries whose corrected JSON validated */
+  retrySuccesses: number;
+  /** outputs recovered by deterministic enum/array coercion */
+  coercions: number;
+  /** extractions that fell all the way back to the mock rule engine */
+  fallbacks: number;
+  /** listings served by the deterministic mock engine (keyless / budget cap) */
+  mockExtractions: number;
+  /** cache hits (no API call) */
+  cacheHits: number;
+}
+
+/** ExtractionService (frozen contract) + additive run observability. */
+export interface ExtractionServiceWithStats extends ExtractionService {
+  readonly stats: ExtractionRunStats;
+  /** accumulated live spend (USD) recorded on this service's cost meter */
+  costUsd(): number;
+}
+
 export interface ExtractionServiceOptions {
   client?: AiClient;
   cache?: ExtractionCacheStore;
@@ -80,10 +109,19 @@ export interface ExtractionServiceOptions {
 
 export function createExtractionService(
   options: ExtractionServiceOptions = {},
-): ExtractionService {
+): ExtractionServiceWithStats {
   const client = options.client ?? createAiClient();
   const cache = options.cache ?? new InMemoryExtractionCache();
   const concurrency = options.concurrency ?? 5;
+  const stats: ExtractionRunStats = {
+    liveCalls: 0,
+    retries: 0,
+    retrySuccesses: 0,
+    coercions: 0,
+    fallbacks: 0,
+    mockExtractions: 0,
+    cacheHits: 0,
+  };
   const useBatchesApi =
     options.useBatchesApi ?? process.env.EXTRACTION_USE_BATCHES === 'true';
   const batchThreshold = options.batchThreshold ?? 20;
@@ -103,6 +141,7 @@ export function createExtractionService(
       if (results.has(input.contentHash)) continue;
       const cached = await cache.get(input.contentHash);
       if (cached) {
+        stats.cacheHits += 1;
         results.set(input.contentHash, cached.attributes);
       } else {
         misses.push(input);
@@ -116,6 +155,7 @@ export function createExtractionService(
         client.mode === 'mock' ? 'no ANTHROPIC_API_KEY' : 'daily AI budget exhausted';
       log(`[MOCK] extraction: ${misses.length} listing(s) via deterministic rule engine (${reason})`);
       for (const input of misses) {
+        stats.mockExtractions += 1;
         await settle(input, mockExtract(input), 'mock');
       }
       return results;
@@ -131,7 +171,10 @@ export function createExtractionService(
       if (client.effectiveMode() === 'mock') {
         const rest = misses.slice(i);
         log(`[MOCK] extraction: budget cap hit mid-run — ${rest.length} listing(s) fall back to rule engine`);
-        for (const input of rest) await settle(input, mockExtract(input), 'mock');
+        for (const input of rest) {
+          stats.mockExtractions += 1;
+          await settle(input, mockExtract(input), 'mock');
+        }
         break;
       }
       const wave = misses.slice(i, i + concurrency);
@@ -148,31 +191,84 @@ export function createExtractionService(
       await cache.set(input.contentHash, { attributes, model });
     }
 
+    /**
+     * One live extraction, with the validation recovery ladder:
+     *   validate → ONE retry with the Zod errors fed back → deterministic
+     *   coercion (coerce.ts) → mock fallback (loud [FALLBACK] log).
+     */
     async function extractOneLive(input: ExtractionInput): Promise<void> {
       const anthropic = client.anthropic!;
       const model = client.models.extraction;
       const parsed = parseMeasurements(`${input.title}\n${input.description ?? ''}`);
+      const userContent = buildUserContent(input, parsed);
+      const baseParams = {
+        model,
+        max_tokens: maxOutputTokens,
+        system: [
+          {
+            type: 'text' as const,
+            text: EXTRACTION_SYSTEM_PROMPT,
+            cache_control: { type: 'ephemeral' as const },
+          },
+        ],
+        output_config: { format: zodOutputFormat(ExtractionModelOutputSchema) },
+      };
       try {
-        const message = await anthropic.messages.parse({
-          model,
-          max_tokens: maxOutputTokens,
-          system: [
-            {
-              type: 'text',
-              text: EXTRACTION_SYSTEM_PROMPT,
-              cache_control: { type: 'ephemeral' },
-            },
-          ],
-          messages: [{ role: 'user', content: buildUserContent(input, parsed) }],
-          output_config: { format: zodOutputFormat(ExtractionModelOutputSchema) },
+        const first = await anthropic.messages.create({
+          ...baseParams,
+          messages: [{ role: 'user', content: userContent }],
         });
-        client.meter.record(model, message.usage);
-        const output = message.parsed_output;
-        if (!output) throw new Error('no parsed_output in response');
-        await settle(input, finalizeModelOutput(output, parsed, input), model);
+        stats.liveCalls += 1;
+        client.meter.record(model, first.usage);
+        const firstText = textOf(first);
+        let validated = validateModelJson(firstText);
+
+        if (!validated.output) {
+          // 1) retry ONCE, feeding the validation errors back to the model
+          stats.retries += 1;
+          const second = await anthropic.messages.create({
+            ...baseParams,
+            messages: [
+              { role: 'user', content: userContent },
+              { role: 'assistant', content: firstText || '(no output)' },
+              {
+                role: 'user',
+                content:
+                  `Your previous JSON failed schema validation:\n${validated.errors}\n` +
+                  `Return the corrected JSON only. Every enum field must use one of the schema's exact values; ` +
+                  `use null (or omit the array item) for anything you cannot map onto the allowed values.`,
+              },
+            ],
+          });
+          stats.liveCalls += 1;
+          client.meter.record(model, second.usage);
+          const secondText = textOf(second);
+          const retried = validateModelJson(secondText);
+          if (retried.output) {
+            stats.retrySuccesses += 1;
+            validated = retried;
+          } else {
+            // 2) deterministic coercion of the best available raw payload
+            const rawJson = tryJson(secondText) ?? tryJson(firstText);
+            const coerced =
+              rawJson === undefined
+                ? null
+                : ExtractionModelOutputSchema.safeParse(coerceExtractionOutput(rawJson));
+            if (coerced?.success) {
+              stats.coercions += 1;
+              validated = { output: coerced.data, errors: '' };
+            } else {
+              throw new Error(`schema validation failed after retry + coercion: ${retried.errors}`);
+            }
+          }
+        }
+        await settle(input, finalizeModelOutput(validated.output!, parsed, input), model);
       } catch (err) {
+        // 3) last resort — loud, with the full content hash for triage
+        stats.fallbacks += 1;
+        stats.mockExtractions += 1;
         log(
-          `[MOCK] extraction fallback for ${input.contentHash.slice(0, 12)}…: ${(err as Error).message}`,
+          `[FALLBACK] extraction ${input.contentHash} → mock rule engine: ${(err as Error).message}`,
         );
         await settle(input, mockExtract(input), 'mock');
       }
@@ -238,24 +334,38 @@ export function createExtractionService(
         if (entry.result.type === 'succeeded') {
           try {
             const msg = entry.result.message;
+            stats.liveCalls += 1;
             client.meter.record(model, msg.usage, { batch: true });
-            const text = msg.content.find(
-              (b): b is Anthropic.TextBlock => b.type === 'text',
-            );
-            const output = ExtractionModelOutputSchema.parse(
-              JSON.parse(text?.text ?? 'null'),
-            );
-            await settle(input, finalizeModelOutput(output, parsed, input), model);
+            const text = textOf(msg);
+            let validated = validateModelJson(text);
+            if (!validated.output) {
+              // batches can't do a feedback retry — go straight to coercion
+              const rawJson = tryJson(text);
+              const coerced =
+                rawJson === undefined
+                  ? null
+                  : ExtractionModelOutputSchema.safeParse(coerceExtractionOutput(rawJson));
+              if (!coerced?.success) {
+                throw new Error(`batch entry failed validation + coercion: ${validated.errors}`);
+              }
+              stats.coercions += 1;
+              validated = { output: coerced.data, errors: '' };
+            }
+            await settle(input, finalizeModelOutput(validated.output!, parsed, input), model);
             continue;
-          } catch {
+          } catch (err) {
+            stats.fallbacks += 1;
+            log(`[FALLBACK] extraction ${contentHash} → mock rule engine: ${(err as Error).message}`);
             // fall through to mock
           }
         }
+        stats.mockExtractions += 1;
         await settle(input, mockExtract(input), 'mock');
       }
       // anything the batch never returned (expired/canceled) → mock
       for (const input of batchInputs) {
         if (!results.has(input.contentHash)) {
+          stats.mockExtractions += 1;
           await settle(input, mockExtract(input), 'mock');
         }
       }
@@ -267,7 +377,40 @@ export function createExtractionService(
       return client.effectiveMode();
     },
     extractBatch,
+    stats,
+    costUsd() {
+      return client.meter.totalUsd();
+    },
   };
+}
+
+/** First text block of a message, or '' (structured outputs emit one text block). */
+function textOf(message: Anthropic.Message): string {
+  const block = message.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
+  return block?.text ?? '';
+}
+
+/** JSON.parse that signals "unparseable" with undefined (null is a valid JSON value). */
+function tryJson(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function validateModelJson(text: string): {
+  output: ExtractionModelOutput | null;
+  errors: string;
+} {
+  const raw = tryJson(text);
+  if (raw === undefined) return { output: null, errors: 'response was not valid JSON' };
+  const result = ExtractionModelOutputSchema.safeParse(raw);
+  if (result.success) return { output: result.data, errors: '' };
+  const errors = result.error.issues
+    .map((i) => `- ${i.path.join('.') || '(root)'}: ${i.message}`)
+    .join('\n');
+  return { output: null, errors };
 }
 
 function buildUserContent(
@@ -314,6 +457,9 @@ export function finalizeModelOutput(
   const attrs: ExtractedAttributes = {
     lengthClass: output.lengthClass,
     lengthInches,
+    // Text-pass lengths are always seller-stated; the vision pass (lengths/)
+    // writes 'image_estimate' when it later fills a missing length.
+    lengthBasis: lengthInches != null ? 'stated' : null,
     measurements,
     colors: output.colors,
     fabric: output.fabric,
@@ -344,6 +490,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 export { mockExtract, MOCK_CONFIDENCE_CAP, extractColors } from './mock';
+export { coerceExtractionOutput } from './coerce';
 export {
   parseMeasurements,
   measurementsAgree,

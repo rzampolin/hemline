@@ -82,6 +82,7 @@ export function mockExtract(input: ExtractionInput): ExtractedAttributes {
   const attrs: ExtractedAttributes = {
     lengthClass,
     lengthInches: lengthInches ?? null,
+    lengthBasis: lengthInches != null ? 'stated' : null,
     measurements,
     colors,
     fabric,
