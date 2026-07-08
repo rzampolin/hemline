@@ -14,6 +14,7 @@ import { getUserProfile } from '@hemline/db';
 import { getDb } from '../lib/db';
 import { fail, ok, serverError, zodFail } from '../lib/envelope';
 import { expandSourceFilter, rankForUser } from '../lib/matching';
+import { checkRateLimit } from '../lib/rate-limit';
 import { resolveUserId } from '../lib/session';
 
 export const runtime = 'nodejs';
@@ -35,6 +36,11 @@ export async function POST(req: Request) {
     const userId = resolveUserId(req) ?? request.userId;
     const profile = getUserProfile(db, userId);
     if (!profile) return fail('no_session', 'Unknown user — call GET /api/session first', 401);
+
+    // Only the LLM path spends money (personalize:false / cache hits are free);
+    // prod rate limit 20/min/user — over budget → deterministic ranking instead
+    // of a hard 429, so the feed never breaks (limiter guards spend, not access).
+    const personalize = request.personalize && checkRateLimit('rank-personalize', userId, 20);
 
     const f = request.filters;
     // profile hard filters applied silently unless the request overrides (spec B1)
@@ -60,7 +66,7 @@ export async function POST(req: Request) {
       {
         limit: Math.min(request.limit, 100),
         cursor: request.cursor,
-        personalize: request.personalize,
+        personalize,
       },
     );
     return ok(response);

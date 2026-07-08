@@ -16,6 +16,7 @@ import { setColorSeason } from '@hemline/db';
 import { getDb } from '../lib/db';
 import { fail, ok, serverError, zodFail } from '../lib/envelope';
 import { getAiClient } from '../lib/matching';
+import { checkRateLimit } from '../lib/rate-limit';
 import { requireUserId } from '../lib/session';
 
 export const runtime = 'nodejs';
@@ -57,6 +58,9 @@ export async function POST(req: Request) {
     const db = getDb();
     const userId = requireUserId(req, db);
     if (!userId) return fail('no_session', 'No session — call GET /api/session first', 401);
+    // AI-spending endpoint (Sonnet when keyed) — prod rate limit, 5/min/user
+    if (!checkRateLimit('color-analysis', userId, 5))
+      return fail('rate_limited', 'Too many color analyses — try again in a minute', 429);
 
     const image = await readImageBuffer(req);
     if (!Buffer.isBuffer(image)) return fail('invalid_request', image.error, 400);
