@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type Anthropic from '@anthropic-ai/sdk';
 import type { ExtractionInput } from '@hemline/contracts';
 import { createCostMeter, isImageUrlDownloadError, type AiClient } from '../client';
+import type { ImageFetcher } from '../images/fetcher';
 import { createExtractionService, InMemoryExtractionCache } from './index';
 
 function fakeResponse(payload: unknown): unknown {
@@ -211,6 +212,40 @@ describe('isImageUrlDownloadError', () => {
     expect(isImageUrlDownloadError(reworded)).toBe(true);
   });
 
+  it('matches the robots.txt refusal seen in prod 2026-07 (stopped the lengths pass at 5/10045)', () => {
+    const err = new Error(
+      '400 {"type":"error","error":{"type":"invalid_request_error","message":' +
+        '"This URL is disallowed by the website\'s robots.txt file."}}',
+    );
+    (err as Error & { status: number }).status = 400;
+    expect(isImageUrlDownloadError(err)).toBe(true);
+    // and as a Message Batches errored payload
+    expect(
+      isImageUrlDownloadError({
+        type: 'error',
+        error: {
+          type: 'invalid_request_error',
+          message: "This URL is disallowed by the website's robots.txt file.",
+        },
+      }),
+    ).toBe(true);
+    // reworded robots refusals still match
+    const reworded = new Error(
+      '400 invalid_request_error: Access to this URL is blocked by robots.txt.',
+    );
+    (reworded as Error & { status: number }).status = 400;
+    expect(isImageUrlDownloadError(reworded)).toBe(true);
+  });
+
+  it('robots.txt mentioned without a refusal (or outside a 400) does not match', () => {
+    const ok = new Error('400 invalid_request_error: robots.txt is a plain text file');
+    (ok as Error & { status: number }).status = 400;
+    expect(isImageUrlDownloadError(ok)).toBe(false);
+    expect(
+      isImageUrlDownloadError(new Error('529 overloaded while reading robots.txt disallow rules')),
+    ).toBe(false);
+  });
+
   it('does not match other 400s, overloads, or non-errors', () => {
     const other400 = new Error('400 invalid_request_error: max_tokens too large');
     (other400 as Error & { status: number }).status = 400;
@@ -221,7 +256,7 @@ describe('isImageUrlDownloadError', () => {
   });
 });
 
-describe('extraction image-URL failure → TEXT-ONLY retry (never mock)', () => {
+describe('legacy url mode: extraction image-URL failure → TEXT-ONLY retry (never mock)', () => {
   it('retries the same listing without the image block; model recorded as live', async () => {
     const logs: string[] = [];
     const cache = new InMemoryExtractionCache();
@@ -232,6 +267,7 @@ describe('extraction image-URL failure → TEXT-ONLY retry (never mock)', () => 
     const service = createExtractionService({
       client: liveClientWith(create),
       cache,
+      imageDelivery: 'url',
       logger: (m) => logs.push(m),
     });
     const results = await service.extractBatch([imageInput('img1')]);
@@ -256,7 +292,11 @@ describe('extraction image-URL failure → TEXT-ONLY retry (never mock)', () => 
       .fn()
       .mockRejectedValueOnce(imageDownloadError())
       .mockRejectedValue(new Error('529 overloaded'));
-    const service = createExtractionService({ client: liveClientWith(create), logger: () => {} });
+    const service = createExtractionService({
+      client: liveClientWith(create),
+      imageDelivery: 'url',
+      logger: () => {},
+    });
     const results = await service.extractBatch([imageInput('img2')]);
     expect(results.get('img2')).toBeDefined(); // mock still answered
     expect(service.stats).toMatchObject({ imageUrlFailures: 1, fallbacks: 1, mockExtractions: 1 });
@@ -267,5 +307,94 @@ describe('extraction image-URL failure → TEXT-ONLY retry (never mock)', () => 
     const service = createExtractionService({ client: liveClientWith(create), logger: () => {} });
     await service.extractBatch([input('no-img')]); // input() has no primaryImageUrl
     expect(service.stats).toMatchObject({ imageUrlFailures: 0, fallbacks: 1 });
+  });
+});
+
+// ── base64 delivery (default, decisions #25): WE download, the API never fetches ──
+
+function okImageFetcher(): ImageFetcher {
+  return {
+    fetchImage: vi
+      .fn()
+      .mockResolvedValue({ ok: true, image: { base64: 'aW1n', mediaType: 'image/jpeg', bytes: 3 } }),
+    stats: { fetches: 0, cacheHits: 0, failures: 0 },
+  };
+}
+
+function failingImageFetcher(): ImageFetcher {
+  return {
+    fetchImage: vi
+      .fn()
+      .mockResolvedValue({ ok: false, reason: 'http_error', detail: 'HTTP 403' }),
+    stats: { fetches: 0, cacheHits: 0, failures: 1 },
+  };
+}
+
+describe('base64 delivery (default): our download, text-only downgrade', () => {
+  it('weak text + downloadable image → base64 block attached (no url source anywhere)', async () => {
+    const imageFetcher = okImageFetcher();
+    const create = vi.fn().mockResolvedValueOnce(fakeResponse(good));
+    const service = createExtractionService({
+      client: liveClientWith(create),
+      imageFetcher,
+      logger: () => {},
+    });
+    const results = await service.extractBatch([imageInput('b64-1')]);
+
+    expect(results.get('b64-1')!.silhouette).toBe('wrap');
+    expect(imageFetcher.fetchImage).toHaveBeenCalledWith(
+      'https://res.cloudinary.com/ref/image/upload/dress.jpg',
+    );
+    const content = create.mock.calls[0][0].messages[0].content;
+    const imageBlock = content.find((b: { type: string }) => b.type === 'image');
+    expect(imageBlock.source).toEqual({
+      type: 'base64',
+      media_type: 'image/jpeg',
+      data: 'aW1n',
+    });
+    expect(service.stats).toMatchObject({ imageFetchFailures: 0, imageUrlFailures: 0 });
+  });
+
+  it('our download fails → extracted TEXT-ONLY in the same single call (no wasted API call, never mock)', async () => {
+    const logs: string[] = [];
+    const cache = new InMemoryExtractionCache();
+    const create = vi.fn().mockResolvedValueOnce(fakeResponse(good));
+    const service = createExtractionService({
+      client: liveClientWith(create),
+      cache,
+      imageFetcher: failingImageFetcher(),
+      logger: (m) => logs.push(m),
+    });
+    const results = await service.extractBatch([imageInput('b64-2')]);
+
+    // live extraction succeeded text-only, first try
+    expect(results.get('b64-2')!.silhouette).toBe('wrap');
+    expect((await cache.get('b64-2'))!.model).toBe('claude-haiku-4-5-20251001'); // NOT 'mock'
+    expect(create).toHaveBeenCalledTimes(1); // the old flow burned 2 calls here
+    const content = create.mock.calls[0][0].messages[0].content;
+    expect(content.some((b: { type: string }) => b.type === 'image')).toBe(false);
+    expect(service.stats).toMatchObject({
+      imageFetchFailures: 1,
+      imageUrlFailures: 0,
+      fallbacks: 0,
+      mockExtractions: 0,
+    });
+    expect(logs.some((l) => l.includes('[IMAGE-DOWNLOAD]') && l.includes('b64-2'))).toBe(true);
+    expect(logs.some((l) => l.includes('[FALLBACK]'))).toBe(false);
+  });
+
+  it('strong text → no download attempted at all (two-pass economy intact)', async () => {
+    const imageFetcher = okImageFetcher();
+    const create = vi.fn().mockResolvedValueOnce(fakeResponse(good));
+    const service = createExtractionService({
+      client: liveClientWith(create),
+      imageFetcher,
+      logger: () => {},
+    });
+    // input() has strong text (midi + wrap signals) and no primaryImageUrl
+    await service.extractBatch([
+      { ...input('strong'), primaryImageUrl: 'https://cdn/strong.jpg' },
+    ]);
+    expect(imageFetcher.fetchImage).not.toHaveBeenCalled();
   });
 });

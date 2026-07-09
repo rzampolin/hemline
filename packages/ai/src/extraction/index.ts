@@ -5,7 +5,9 @@
  * - Live mode: Haiku (claude-haiku-4-5-20251001), JSON-schema-constrained via
  *   zodOutputFormat, prompt-cached system block, deterministic measurement
  *   pre-parse embedded in (and verified against) the prompt, at most one image
- *   and only when the text alone is weak (two-pass economy).
+ *   and only when the text alone is weak (two-pass economy). Images are
+ *   downloaded by OUR polite fetcher and inlined as base64 (decisions #25) —
+ *   the API never fetches URLs; a failed download downgrades to text-only.
  * - Idempotent by content_hash: the cache port mirrors the `extractions`
  *   table semantics. This package has read-only DB access, so persistence is
  *   injected — backend/data-eng wire `ExtractionCacheStore` to the table; the
@@ -22,6 +24,7 @@ import {
   type ExtractionService,
 } from '@hemline/contracts';
 import { createAiClient, isImageUrlDownloadError, type AiClient } from '../client';
+import { base64ImageBlock, createImageFetcher, type ImageFetcher } from '../images/fetcher';
 import { coerceExtractionOutput } from './coerce';
 import { measurementsAgree, parseMeasurements, type ParsedMeasurements } from './measurements';
 import { mockExtract } from './mock';
@@ -74,11 +77,19 @@ export interface ExtractionRunStats {
   /** outputs recovered by deterministic enum/array coercion */
   coercions: number;
   /**
-   * API-side image download failures (400 "Unable to download the file…")
-   * that triggered a TEXT-ONLY retry of the same listing — a live text
-   * extraction beats a mock one, so these are NOT fallbacks.
+   * API-side image download failures (400 "Unable to download the file…",
+   * legacy url delivery / old batch results) that triggered a TEXT-ONLY
+   * retry of the same listing — a live text extraction beats a mock one,
+   * so these are NOT fallbacks.
    */
   imageUrlFailures: number;
+  /**
+   * OUR-side image download failures (default base64 delivery, decisions
+   * #25): the polite fetcher could not deliver the image, so the listing was
+   * extracted TEXT-ONLY in the SAME call — no API call wasted, not a
+   * fallback.
+   */
+  imageFetchFailures: number;
   /** extractions that fell all the way back to the mock rule engine */
   fallbacks: number;
   /** listings served by the deterministic mock engine (keyless / budget cap) */
@@ -99,6 +110,16 @@ export interface ExtractionServiceOptions {
   cache?: ExtractionCacheStore;
   /** Live-call chunk size (parallel requests per wave). Default 5. */
   concurrency?: number;
+  /**
+   * 'base64' (default): we download the primary image ourselves — politely,
+   * under the identified HemlineBot UA — and inline it, so the API never
+   * fetches URLs (robots.txt blocks on AI fetchers, decisions #25). A failed
+   * download downgrades that listing to text-only extraction up front, with
+   * no wasted API call. 'url': legacy API-side fetch (cheap escape hatch).
+   */
+  imageDelivery?: 'base64' | 'url';
+  /** injectable image fetcher (tests); default: a polite base64 fetcher */
+  imageFetcher?: ImageFetcher;
   /**
    * Use the Message Batches API (50% off, results within ~1h) for misses at or
    * above `batchThreshold`. Default: EXTRACTION_USE_BATCHES === 'true' —
@@ -125,10 +146,13 @@ export function createExtractionService(
     retrySuccesses: 0,
     coercions: 0,
     imageUrlFailures: 0,
+    imageFetchFailures: 0,
     fallbacks: 0,
     mockExtractions: 0,
     cacheHits: 0,
   };
+  const imageDelivery = options.imageDelivery ?? 'base64';
+  const imageFetcher = options.imageFetcher ?? createImageFetcher();
   const useBatchesApi =
     options.useBatchesApi ?? process.env.EXTRACTION_USE_BATCHES === 'true';
   const batchThreshold = options.batchThreshold ?? 20;
@@ -136,6 +160,33 @@ export function createExtractionService(
   const batchMaxWaitMs = options.batchMaxWaitMs ?? 60 * 60_000;
   const maxOutputTokens = options.maxOutputTokens ?? 1500;
   const log = options.logger ?? ((m: string) => console.log(m));
+
+  /**
+   * Deliver the image block for a listing (two-pass economy: only when the
+   * text is weak). Default base64 mode downloads the image OURSELVES via the
+   * polite fetcher and inlines it; a failed download logs [IMAGE-DOWNLOAD]
+   * and returns null, downgrading the listing to TEXT-ONLY extraction up
+   * front — no API call wasted (decisions #25; better than the old post-hoc
+   * text-only retry, which burned one live call to learn the URL was dead).
+   */
+  async function resolveImageBlock(
+    input: ExtractionInput,
+    wantsImage: boolean,
+    opts: { textOnly?: boolean } = {},
+  ): Promise<Anthropic.ImageBlockParam | null> {
+    if (opts.textOnly || !wantsImage || !input.primaryImageUrl) return null;
+    if (imageDelivery === 'url') {
+      return { type: 'image', source: { type: 'url', url: input.primaryImageUrl } };
+    }
+    const fetched = await imageFetcher.fetchImage(input.primaryImageUrl);
+    if (fetched.ok) return base64ImageBlock(fetched.image);
+    stats.imageFetchFailures += 1;
+    log(
+      `[IMAGE-DOWNLOAD] extraction ${input.contentHash}: could not download ` +
+        `${input.primaryImageUrl} (${fetched.reason}: ${fetched.detail}) — extracting TEXT-ONLY`,
+    );
+    return null;
+  }
 
   async function extractBatch(
     inputs: ExtractionInput[],
@@ -203,9 +254,12 @@ export function createExtractionService(
      *   validate → ONE retry with the Zod errors fed back → deterministic
      *   coercion (coerce.ts) → mock fallback (loud [FALLBACK] log).
      *
-     * Image-URL resilience (decisions-ai-eng #23): when the API itself cannot
-     * download the attached image URL (400 invalid_request_error), the listing
-     * is retried once TEXT-ONLY — a live text extraction beats a mock one —
+     * Image resilience: in the default base64 mode a dead image URL is
+     * discovered by OUR fetcher before any API call and the listing proceeds
+     * text-only (decisions #25). The API-side handler below (decisions #23)
+     * remains for legacy url delivery: when the API itself cannot download
+     * the attached image URL (400 invalid_request_error), the listing is
+     * retried once TEXT-ONLY — a live text extraction beats a mock one —
      * before the mock fallback is even considered.
      */
     async function extractOneLive(
@@ -215,8 +269,10 @@ export function createExtractionService(
       const anthropic = client.anthropic!;
       const model = client.models.extraction;
       const parsed = parseMeasurements(`${input.title}\n${input.description ?? ''}`);
-      const userContent = buildUserContent(input, parsed, opts);
-      const sentImage = userContent.some((b) => b.type === 'image');
+      const { userText, wantsImage } = buildExtractionUserText(input, parsed);
+      const imageBlock = await resolveImageBlock(input, wantsImage, opts);
+      const userContent = contentFor(userText, imageBlock);
+      const sentImage = imageBlock !== null;
       const baseParams = {
         model,
         max_tokens: maxOutputTokens,
@@ -306,10 +362,15 @@ export function createExtractionService(
       const parsedByHash = new Map<string, ParsedMeasurements>();
       const inputByHash = new Map<string, ExtractionInput>();
 
-      const requests = batchInputs.map((input) => {
+      // Images are downloaded (waves of `concurrency`, cached/deduped by the
+      // fetcher) BEFORE the batch is submitted — batch entries carry base64,
+      // so the API-side robots.txt/download failures cannot error them.
+      const requests = await mapChunked(batchInputs, concurrency, async (input) => {
         const parsed = parseMeasurements(`${input.title}\n${input.description ?? ''}`);
         parsedByHash.set(input.contentHash, parsed);
         inputByHash.set(input.contentHash, input);
+        const { userText, wantsImage } = buildExtractionUserText(input, parsed);
+        const imageBlock = await resolveImageBlock(input, wantsImage);
         return {
           custom_id: customIdFor(input.contentHash),
           params: {
@@ -322,9 +383,7 @@ export function createExtractionService(
                 cache_control: { type: 'ephemeral' as const },
               },
             ],
-            messages: [
-              { role: 'user' as const, content: buildUserContent(input, parsed) },
-            ],
+            messages: [{ role: 'user' as const, content: contentFor(userText, imageBlock) }],
             output_config: { format: zodOutputFormat(ExtractionModelOutputSchema) },
           },
         };
@@ -453,20 +512,28 @@ function validateModelJson(text: string): {
   return { output: null, errors };
 }
 
-function buildUserContent(
-  input: ExtractionInput,
-  parsed: ParsedMeasurements,
-  opts: { textOnly?: boolean } = {},
+/** User content: the grounded text plus the (already-delivered) image block, if any. */
+function contentFor(
+  userText: string,
+  imageBlock: Anthropic.ImageBlockParam | null,
 ): Anthropic.ContentBlockParam[] {
-  const { userText, wantsImage } = buildExtractionUserText(input, parsed);
   const content: Anthropic.ContentBlockParam[] = [{ type: 'text', text: userText }];
-  if (!opts.textOnly && wantsImage && input.primaryImageUrl) {
-    content.push({
-      type: 'image',
-      source: { type: 'url', url: input.primaryImageUrl },
-    });
-  }
+  if (imageBlock) content.push(imageBlock);
   return content;
+}
+
+/** Sequential waves of `chunkSize` concurrent `fn` calls, results in order. */
+async function mapChunked<T, R>(
+  items: T[],
+  chunkSize: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = [];
+  const size = Math.max(1, chunkSize);
+  for (let i = 0; i < items.length; i += size) {
+    out.push(...(await Promise.all(items.slice(i, i + size).map(fn))));
+  }
+  return out;
 }
 
 /**

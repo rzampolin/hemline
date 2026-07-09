@@ -36,6 +36,7 @@ const emptyStats = () => ({
   fallbacks: 0,
   mockExtractions: 0,
   imageUrlFailures: 0,
+  imageFetchFailures: 0,
   cacheHits: 0,
 });
 const withStats = (

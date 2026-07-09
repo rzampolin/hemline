@@ -266,3 +266,54 @@ doc was ambiguous, contradictory, or silent. Everything else follows the doc.
       churn too, but a cached ranking might then not cover the actual head;
       rejected. A NEW listing entering the top-24 still misses — correct,
       new content deserves a fresh rerank. 24h TTL unchanged.
+
+25. **Base64 image delivery — WE download, the API never fetches URLs
+    (2026-07, prod blocker).** The hem-lengths vision pass over the new 13k
+    catalog stopped at 5/10045: Anthropic's URL fetcher honors robots.txt for
+    AI user agents, and several stores' image CDNs disallow those while
+    serving normal crawlers (400 "This URL is disallowed by the website's
+    robots.txt file"; earlier variants: 400s on unencoded parens, download
+    timeouts). That phrasing also evaded `isImageUrlDownloadError`, so 5
+    extraction listings fell back to mock instead of text-only. Our own
+    pipeline already fetches these exact images politely (the embed sidecar
+    cached thousands from the robots-blocked CDNs under the identified
+    HemlineBot UA). Decision:
+    - **`images/fetcher.ts` (new)**: minimal polite fetcher inside
+      packages/ai — HemlineBot UA (same string as connectors politeness.ts,
+      re-implemented rather than imported so ai does not grow an edge onto
+      connectors/drizzle), per-attempt timeout (20s), retry-with-backoff on
+      network/429/5xx (default 2 attempts), best-effort per-host min delay
+      (`HEMLINE_IMAGE_FETCH_DELAY_MS`, default 300ms; no per-host
+      serialization — runner concurrency is low and every image is followed
+      by an API call), hard 5MB cap (the API's own per-image limit) enforced
+      MID-STREAM with a clear `too_large` marker, media type sniffed from
+      magic bytes first / Content-Type second (jpeg/png/gif/webp only), and a
+      byte-capped in-memory LRU (64MB) + in-flight dedupe keyed by URL so
+      extraction and lengths never download the same image twice in a run.
+      NO downscaling — images go as-is; Haiku handles sizing.
+    - **Lengths estimator**: downloads via the fetcher and inlines base64;
+      our download failing (after the fetcher's attempt budget) →
+      'image_unavailable' with ZERO API calls (the old path burned
+      `imageDownloadAttempts` live calls to learn the URL was dead), same
+      terminal not_estimable semantics as #23.
+    - **Extraction**: same swap where the primary image is attached; our
+      download failing downgrades that listing to TEXT-ONLY in the SAME call
+      — strictly better than #23's post-hoc text-only retry (one API call
+      instead of two). New `ExtractionRunStats.imageFetchFailures` counts
+      these; `imageUrlFailures` remains for API-side failures on the legacy
+      paths. Batch requests are built with pre-downloaded base64 (download
+      waves of `concurrency`), so batch entries can no longer error on image
+      URLs. CAVEAT: base64 inflates batch payload sizes (~1.33× image bytes);
+      very large image-heavy backfills may need chunking against the Batches
+      API's request-size limits — batches are off by default, flagged, not
+      solved here.
+    - **URL mode kept** behind `imageDelivery: 'url'` (both services) purely
+      as an escape hatch — the #23 API-side handling is preserved on that
+      path, and `isImageUrlDownloadError` now also matches robots.txt
+      refusal phrasing (a 400 whose text names robots.txt + a
+      disallow/block/deny word) for any residual URL-mode/batch payloads.
+    - **Cost**: image tokens are IDENTICAL either way (~(w×h)/750 regardless
+      of url vs base64 source); the request body grows by the base64 bytes
+      but request bytes are not billed. Egress moves onto our runner's
+      network (one image download per uncached listing — the same bytes the
+      embed sidecar already pulls).

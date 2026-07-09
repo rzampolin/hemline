@@ -170,10 +170,19 @@ function parseBudget(raw: string | undefined): number {
  *   - "The request timed out while trying to download the file. Please try
  *     again later." (2026-07, prod — the old verb-anchored regex missed it
  *     and the listing fell back to mock)
+ *   - "This URL is disallowed by the website's robots.txt file." (2026-07,
+ *     prod — the API's fetcher honors robots.txt for AI user agents; several
+ *     stores' image CDNs block those while allowing normal crawlers. No
+ *     download verb at all, so it needs its own clause below.)
  * The API rewords these freely, so the detector matches SEMANTICS, not one
  * phrasing: a 400/invalid_request_error whose text (a) is about
  * downloading/fetching/retrieving a file/url/image and (b) reads as a
- * failure (unable/failed/cannot/timed out/error…), in either order.
+ * failure (unable/failed/cannot/timed out/error…), in either order — OR
+ * (c) says a url/file/image is disallowed/blocked by robots.txt.
+ *
+ * NOTE: base64 delivery (decisions #25) makes these unreachable on the
+ * default paths — the API no longer fetches URLs for us — but the matcher
+ * stays sharp for the residual URL-mode code path and old batch results.
  *
  * Accepts both thrown SDK APIErrors and Message Batches `errored` result
  * payloads ({ type: 'error', error: { type, message } }). The listing itself
@@ -203,5 +212,12 @@ export function isImageUrlDownloadError(err: unknown): boolean {
     /\b(unable|failed|failure|error|could\s*not|couldn'?t|cannot|can'?t|timed?[\s-]?out)\b/i.test(
       text,
     );
-  return aboutDownloadingAFile && readsAsFailure;
+  // robots.txt refusals name the url/file but no download verb ("This URL is
+  // disallowed by the website's robots.txt file").
+  const robotsDisallowed =
+    /robots\.txt/i.test(text) &&
+    /\b(disallow(?:ed|s)?|den(?:y|ied|ies)|block(?:ed|s|ing)?|forbid(?:den|s)?|not\s+(?:allowed|permitted)|prohibit(?:ed|s)?)\b/i.test(
+      text,
+    );
+  return (aboutDownloadingAFile && readsAsFailure) || robotsDisallowed;
 }

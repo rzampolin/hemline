@@ -123,6 +123,8 @@ export interface ExtractionOutcome {
     coercions: number;
     /** API image-download 400s recovered by a TEXT-ONLY retry (still live) */
     imageUrlFailures?: number;
+    /** our-side image download failures → extracted text-only, no wasted call */
+    imageFetchFailures?: number;
     fallbacks: number;
     mockExtractions: number;
     cacheHits: number;

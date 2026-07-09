@@ -26,6 +26,7 @@ import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod/v4';
 import type { LengthClass } from '@hemline/contracts';
 import { createAiClient, isImageUrlDownloadError, type AiClient } from '../client';
+import { base64ImageBlock, createImageFetcher, type ImageFetcher } from '../images/fetcher';
 
 // ── model-facing schema (zod/v4 for zodOutputFormat, decisions-ai-eng #13) ──
 
@@ -119,12 +120,15 @@ export interface LengthEstimateResult {
    * 'clamped'    → estimate contradicted the lengthClass prior band — distrust
    *                it, keep the class prior (write NO inches, mark attempted);
    * 'no_estimate'→ model could not estimate (null) — mark attempted;
-   * 'image_unavailable' → the API itself cannot download the image URL (400
-   *                "Unable to download the file…", persisted across the retry
-   *                budget). The image IS the input here — no text fallback
-   *                exists — so this is TERMINAL: mark 'not_estimable' so the
-   *                queue drains instead of re-billing a dead URL forever
-   *                (decisions-ai-eng #23);
+   * 'image_unavailable' → the image could not be delivered: in the default
+   *                base64 mode OUR polite download failed across the fetcher's
+   *                attempt budget (http error / too large / unsupported type /
+   *                network); in legacy url mode the API itself could not
+   *                download the URL (400 "Unable to download the file…"). The
+   *                image IS the input here — no text fallback exists — so this
+   *                is TERMINAL: mark 'not_estimable' so the queue drains
+   *                instead of re-billing a dead URL forever (decisions-ai-eng
+   *                #23, #25);
    * 'failed'     → transient API/validation error — do NOT mark, safe to
    *                retry later.
    */
@@ -237,11 +241,22 @@ export interface LengthEstimatorOptions {
   client?: AiClient;
   maxOutputTokens?: number;
   /**
-   * Total attempts when the API reports it cannot download the image URL
-   * (default 2 — one retry absorbs transient CDN blips; after that the URL is
-   * treated as dead and the row surfaces as 'image_unavailable', terminal).
+   * Total attempts to download the image (default 2 — one retry absorbs
+   * transient CDN blips; after that the URL is treated as dead and the row
+   * surfaces as 'image_unavailable', terminal). In the default base64 mode
+   * this is OUR download budget (fed to the image fetcher); in the legacy
+   * 'url' mode it bounds the API-side download retry loop.
    */
   imageDownloadAttempts?: number;
+  /**
+   * 'base64' (default): we download the image ourselves — politely, under the
+   * identified HemlineBot UA — and inline it, so the API never fetches URLs
+   * (robots.txt blocks on AI fetchers ended URL mode in prod, decisions #25).
+   * 'url': legacy API-side fetch, kept only as a cheap escape hatch.
+   */
+  imageDelivery?: 'base64' | 'url';
+  /** injectable image fetcher (tests); default: a polite base64 fetcher */
+  imageFetcher?: ImageFetcher;
   logger?: (message: string) => void;
 }
 
@@ -249,6 +264,9 @@ export function createLengthEstimator(options: LengthEstimatorOptions = {}): Len
   const client = options.client ?? createAiClient();
   const maxOutputTokens = options.maxOutputTokens ?? 300;
   const imageDownloadAttempts = Math.max(1, options.imageDownloadAttempts ?? 2);
+  const imageDelivery = options.imageDelivery ?? 'base64';
+  const imageFetcher =
+    options.imageFetcher ?? createImageFetcher({ attempts: imageDownloadAttempts });
   const log = options.logger ?? ((m: string) => console.log(m));
   const stats: LengthEstimatorStats = {
     calls: 0,
@@ -281,10 +299,44 @@ export function createLengthEstimator(options: LengthEstimatorOptions = {}): Len
     const anthropic = client.anthropic!;
     const model = client.models.extraction;
     try {
+      // The image IS the input for this pass — if it cannot be delivered, no
+      // vision estimate is possible: retry within the attempt budget, then
+      // surface as terminal 'image_unavailable' so the queue drains instead
+      // of re-billing a dead URL forever (decisions #23, #25).
+      let imageBlock: Anthropic.ImageBlockParam;
+      if (imageDelivery === 'base64') {
+        // Default: WE download the image (politely, identified HemlineBot UA;
+        // the fetcher owns the retry budget) and inline it as base64 — the
+        // API never fetches URLs, so robots.txt blocks on AI fetchers and
+        // unencoded-paren 400s cannot stop the run (decisions #25).
+        const fetched = await imageFetcher.fetchImage(input.primaryImageUrl);
+        if (!fetched.ok) {
+          stats.imageUnavailable += 1;
+          log(
+            `[IMAGE-DOWNLOAD] lengths ${input.contentHash.slice(0, 12)}… could not download ` +
+              `${input.primaryImageUrl} (${fetched.reason}: ${fetched.detail}) — no vision ` +
+              `estimate possible, terminal: mark not_estimable`,
+          );
+          return {
+            status: 'image_unavailable',
+            lengthInches: null,
+            rawLengthInches: null,
+            modelConfidence: 0,
+            reasoning: null,
+            anchor,
+            anchorHeightInches,
+            error: `image download failed (${fetched.reason}): ${fetched.detail}`,
+          };
+        }
+        imageBlock = base64ImageBlock(fetched.image);
+      } else {
+        imageBlock = { type: 'image', source: { type: 'url', url: input.primaryImageUrl } };
+      }
       let message: Anthropic.Message | undefined;
-      // The image IS the input for this pass — an API-side image-download
-      // failure cannot be worked around, only retried (transient CDN blip)
-      // and then surfaced as terminal so the queue drains (decisions #23).
+      // Legacy url mode only: an API-side image-download failure cannot be
+      // worked around, only retried (transient CDN blip) and then surfaced as
+      // terminal. In base64 mode the API has nothing to download, so any
+      // error here rethrows to the generic handler.
       for (let attempt = 1; message === undefined; attempt++) {
         try {
           message = await anthropic.messages.create({
@@ -301,7 +353,7 @@ export function createLengthEstimator(options: LengthEstimatorOptions = {}): Len
               {
                 role: 'user',
                 content: [
-                  { type: 'image', source: { type: 'url', url: input.primaryImageUrl } },
+                  imageBlock,
                   { type: 'text', text: buildLengthEstimationUserText(input) },
                 ],
               },
@@ -309,7 +361,7 @@ export function createLengthEstimator(options: LengthEstimatorOptions = {}): Len
             output_config: { format: zodOutputFormat(LengthEstimateOutputSchema) },
           });
         } catch (err) {
-          if (!isImageUrlDownloadError(err)) throw err;
+          if (imageDelivery !== 'url' || !isImageUrlDownloadError(err)) throw err;
           if (attempt >= imageDownloadAttempts) {
             stats.imageUnavailable += 1;
             log(

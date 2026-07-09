@@ -5,6 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type Anthropic from '@anthropic-ai/sdk';
 import { createCostMeter, type AiClient } from '../client';
+import type { ImageFetcher } from '../images/fetcher';
 import {
   buildLengthEstimationUserText,
   clampLengthEstimate,
@@ -161,21 +162,45 @@ const anInput: LengthEstimateInput = {
   lengthClass: 'knee',
 };
 
+/** Stubbed polite fetcher — the default base64 delivery downloads via this. */
+function okImageFetcher(): ImageFetcher {
+  return {
+    fetchImage: vi
+      .fn()
+      .mockResolvedValue({ ok: true, image: { base64: 'aW1n', mediaType: 'image/jpeg', bytes: 3 } }),
+    stats: { fetches: 0, cacheHits: 0, failures: 0 },
+  };
+}
+
+function failingImageFetcher(reason = 'http_error', detail = 'HTTP 403'): ImageFetcher {
+  return {
+    fetchImage: vi.fn().mockResolvedValue({ ok: false, reason, detail }),
+    stats: { fetches: 0, cacheHits: 0, failures: 1 },
+  };
+}
+
 describe('createLengthEstimator', () => {
-  it('sends ONE vision call: image block + grounded text, schema-constrained', async () => {
+  it('sends ONE vision call: OUR downloaded image inlined as base64 + grounded text, schema-constrained', async () => {
     const create = vi
       .fn()
       .mockResolvedValue(fakeResponse({ lengthInches: 39, confidence: 0.8, reasoning: 'knee' }));
-    const estimator = createLengthEstimator({ client: liveClientWith(create), logger: () => {} });
+    const imageFetcher = okImageFetcher();
+    const estimator = createLengthEstimator({
+      client: liveClientWith(create),
+      imageFetcher,
+      logger: () => {},
+    });
     const result = await estimator.estimateOne(anInput);
 
     expect(result.status).toBe('estimated');
     expect(result.lengthInches).toBe(39);
     expect(create).toHaveBeenCalledTimes(1);
+    expect(imageFetcher.fetchImage).toHaveBeenCalledWith('https://cdn/dress.jpg');
     const req = create.mock.calls[0][0];
+    // base64 source — the API is never asked to fetch a URL (decisions #25)
     expect(req.messages[0].content[0]).toEqual({
       type: 'image',
-      source: { type: 'url', url: 'https://cdn/dress.jpg' },
+      source: { type: 'base64', media_type: 'image/jpeg', data: 'aW1n' },
     });
     expect(req.output_config?.format).toBeDefined();
     expect(req.system[0].text).toBe(LENGTH_ESTIMATION_SYSTEM_PROMPT);
@@ -183,11 +208,45 @@ describe('createLengthEstimator', () => {
     expect(estimator.costUsd()).toBeGreaterThan(0);
   });
 
+  it('our download fails → image_unavailable (terminal) with ZERO API calls', async () => {
+    const logs: string[] = [];
+    const create = vi.fn();
+    const estimator = createLengthEstimator({
+      client: liveClientWith(create),
+      imageFetcher: failingImageFetcher('http_error', 'HTTP 403'),
+      logger: (m) => logs.push(m),
+    });
+    const result = await estimator.estimateOne(anInput);
+
+    expect(result.status).toBe('image_unavailable'); // NOT 'failed' — queue must drain
+    expect(result.lengthInches).toBeNull();
+    expect(result.error).toContain('http_error');
+    expect(result.error).toContain('HTTP 403');
+    expect(create).not.toHaveBeenCalled(); // no API spend on an undeliverable image
+    expect(estimator.stats).toMatchObject({ imageUnavailable: 1, failed: 0, calls: 0 });
+    expect(logs.some((l) => l.includes('[IMAGE-DOWNLOAD]') && l.includes('not_estimable'))).toBe(
+      true,
+    );
+  });
+
+  it('oversized image → image_unavailable with the clear too_large marker', async () => {
+    const create = vi.fn();
+    const estimator = createLengthEstimator({
+      client: liveClientWith(create),
+      imageFetcher: failingImageFetcher('too_large', 'image exceeds the 5MB cap'),
+      logger: () => {},
+    });
+    const result = await estimator.estimateOne(anInput);
+    expect(result.status).toBe('image_unavailable');
+    expect(result.error).toContain('too_large');
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it('out-of-band estimate → clamped: keep class prior, low confidence, no inches', async () => {
     const create = vi
       .fn()
       .mockResolvedValue(fakeResponse({ lengthInches: 58, confidence: 0.9, reasoning: 'floor?' }));
-    const estimator = createLengthEstimator({ client: liveClientWith(create), logger: () => {} });
+    const estimator = createLengthEstimator({ client: liveClientWith(create), imageFetcher: okImageFetcher(), logger: () => {} });
     const result = await estimator.estimateOne(anInput); // class: knee
 
     expect(result.status).toBe('clamped');
@@ -200,7 +259,7 @@ describe('createLengthEstimator', () => {
     const create = vi
       .fn()
       .mockResolvedValue(fakeResponse({ lengthInches: null, confidence: 0, reasoning: 'flat lay' }));
-    const estimator = createLengthEstimator({ client: liveClientWith(create), logger: () => {} });
+    const estimator = createLengthEstimator({ client: liveClientWith(create), imageFetcher: okImageFetcher(), logger: () => {} });
     expect((await estimator.estimateOne(anInput)).status).toBe('no_estimate');
   });
 
@@ -208,7 +267,7 @@ describe('createLengthEstimator', () => {
     const create = vi
       .fn()
       .mockResolvedValue(fakeResponse({ lengthInches: 39, confidence: 0.8, reasoning: null }));
-    const estimator = createLengthEstimator({ client: liveClientWith(create), logger: () => {} });
+    const estimator = createLengthEstimator({ client: liveClientWith(create), imageFetcher: okImageFetcher(), logger: () => {} });
     const result = await estimator.estimateOne(anInput);
     expect(result.anchor).toBe('assumed_default');
     expect(result.anchorHeightInches).toBe(69);
@@ -218,7 +277,7 @@ describe('createLengthEstimator', () => {
     const create = vi
       .fn()
       .mockResolvedValue(fakeResponse({ lengthInches: 40, confidence: 0.8, reasoning: 'knee' }));
-    const estimator = createLengthEstimator({ client: liveClientWith(create), logger: () => {} });
+    const estimator = createLengthEstimator({ client: liveClientWith(create), imageFetcher: okImageFetcher(), logger: () => {} });
     const result = await estimator.estimateOne({
       ...anInput,
       statedModelHeightInches: 70.5,
@@ -237,7 +296,7 @@ describe('createLengthEstimator', () => {
     const create = vi
       .fn()
       .mockResolvedValue(fakeResponse({ lengthInches: null, confidence: 0, reasoning: 'flat lay' }));
-    const estimator = createLengthEstimator({ client: liveClientWith(create), logger: () => {} });
+    const estimator = createLengthEstimator({ client: liveClientWith(create), imageFetcher: okImageFetcher(), logger: () => {} });
     const result = await estimator.estimateOne({ ...anInput, statedModelHeightInches: 72 });
     expect(result.status).toBe('no_estimate');
     expect(result.anchor).toBe('stated_model_height');
@@ -246,13 +305,13 @@ describe('createLengthEstimator', () => {
 
   it('API error → failed (left queued for resume)', async () => {
     const create = vi.fn().mockRejectedValue(new Error('529 overloaded'));
-    const estimator = createLengthEstimator({ client: liveClientWith(create), logger: () => {} });
+    const estimator = createLengthEstimator({ client: liveClientWith(create), imageFetcher: okImageFetcher(), logger: () => {} });
     const result = await estimator.estimateOne(anInput);
     expect(result.status).toBe('failed');
     expect(result.error).toContain('529');
   });
 
-  it('image-download 400 → image_unavailable after the retry budget (terminal, distinct log)', async () => {
+  it('legacy url mode: API image-download 400 → image_unavailable after the retry budget (terminal, distinct log)', async () => {
     const err = new Error(
       '400 {"type":"error","error":{"type":"invalid_request_error","message":' +
         '"Unable to download the file. Please verify the URL and try again."}}',
@@ -262,6 +321,7 @@ describe('createLengthEstimator', () => {
     const create = vi.fn().mockRejectedValue(err);
     const estimator = createLengthEstimator({
       client: liveClientWith(create),
+      imageDelivery: 'url',
       imageDownloadAttempts: 2,
       logger: (m) => logs.push(m),
     });
@@ -275,18 +335,36 @@ describe('createLengthEstimator', () => {
     expect(logs.some((l) => l.includes('[IMAGE-URL]') && l.includes('not_estimable'))).toBe(true);
   });
 
-  it('transient download blip: fails once, succeeds on retry → estimated', async () => {
+  it('legacy url mode: transient download blip fails once, succeeds on retry → estimated', async () => {
     const err = new Error('400 invalid_request_error: Unable to download the file.');
     (err as Error & { status: number }).status = 400;
     const create = vi
       .fn()
       .mockRejectedValueOnce(err)
       .mockResolvedValueOnce(fakeResponse({ lengthInches: 39, confidence: 0.8, reasoning: 'knee' }));
-    const estimator = createLengthEstimator({ client: liveClientWith(create), logger: () => {} });
+    const estimator = createLengthEstimator({
+      client: liveClientWith(create),
+      imageDelivery: 'url',
+      logger: () => {},
+    });
     const result = await estimator.estimateOne(anInput);
     expect(result.status).toBe('estimated');
     expect(result.lengthInches).toBe(39);
     expect(estimator.stats).toMatchObject({ imageUnavailable: 0, estimated: 1 });
+  });
+
+  it('base64 mode never maps API download-phrased errors to image_unavailable (nothing left for the API to download)', async () => {
+    const err = new Error('400 invalid_request_error: Unable to download the file.');
+    (err as Error & { status: number }).status = 400;
+    const create = vi.fn().mockRejectedValue(err);
+    const estimator = createLengthEstimator({
+      client: liveClientWith(create),
+      imageFetcher: okImageFetcher(),
+      logger: () => {},
+    });
+    const result = await estimator.estimateOne(anInput);
+    expect(result.status).toBe('failed'); // generic API failure — retryable, not terminal
+    expect(create).toHaveBeenCalledTimes(1);
   });
 
   it('keyless/budget-capped client → failed without calling the API', async () => {
