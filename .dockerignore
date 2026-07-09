@@ -1,0 +1,28 @@
+# build context hygiene — keep the image build fast and the layers clean
+.git
+.claude
+**/node_modules
+**/.next
+dist
+coverage
+*.tsbuildinfo
+
+# local data lives on the Fly volume, never in the image
+data
+
+# ML sidecar artifacts (v1 image ships without the model — decisions-deploy.md)
+ml/.venv
+ml/.cache
+
+# secrets
+.env
+.env.*
+
+# not needed to build or run
+e2e
+docs
+playwright-report
+.DS_Store
+README.md
+eslint.config.mjs
+vitest.config.ts

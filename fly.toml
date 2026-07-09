@@ -1,0 +1,56 @@
+# Hemline on Fly.io — single-machine deployment (see DEPLOY.md for the
+# founder-runnable steps and docs/decisions-deploy.md for the why).
+#
+# HARD CONSTRAINT: exactly ONE machine. SQLite lives on the volume below
+# (single writer), and the ingest cron scheduler runs inside the same
+# container as the web server. Never `fly scale count 2` — clone machines
+# would get empty volumes and their own schedulers.
+
+app = "hemline"
+primary_region = "ewr" # pick the region closest to the founder; volume is created here
+
+[build]
+  # Dockerfile at the repo root
+
+[env]
+  DATABASE_PATH = "/data/hemline.db"
+  PORT = "3000"
+  # crawler behavior (override with `fly secrets set` / `fly machine update -e`)
+  INGEST_ENABLE_SHOPIFY = "true"
+  INGEST_ENABLE_JSONLD = "true"
+  JSONLD_MAX_PAGES = "500"
+  AI_DAILY_BUDGET_USD = "5"
+  CRAWLER_CONTACT = "rzampolin15@gmail.com"
+  # secrets are NOT here: fly secrets set ANTHROPIC_API_KEY=... SESSION_SECRET=... ADMIN_BASIC_AUTH=...
+
+[mounts]
+  source = "hemline_data"
+  destination = "/data"
+  # daily Fly-managed volume snapshots, kept 5 days — the beta backup story
+  snapshot_retention = 5
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  # auto_stop MUST stay off: the node-cron ingest scheduler lives in this
+  # machine — stopping it between requests would silently kill the daily
+  # crawls. One always-on shared-cpu-1x/2GB is ~$10.70/mo (2026-07 pricing).
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 50
+    hard_limit = 100
+
+  [[http_service.checks]]
+    grace_period = "20s"
+    interval = "30s"
+    timeout = "5s"
+    method = "GET"
+    path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "2gb"

@@ -1,0 +1,30 @@
+# Litestream scaffolding — continuous SQLite replication to object storage.
+# NOT wired into the image yet (documented follow-up, docs/decisions-deploy.md):
+# for the beta, Fly's daily volume snapshots (snapshot_retention = 5 in
+# fly.toml) are the backup story. Adopt this when the catalog/user data
+# outgrows "restore yesterday's snapshot".
+#
+# To enable (follow-up):
+#   1. Provision a bucket: `fly storage create` (Tigris, S3-compatible) and
+#      note the credentials it prints.
+#   2. fly secrets set LITESTREAM_ACCESS_KEY_ID=... LITESTREAM_SECRET_ACCESS_KEY=...
+#   3. Dockerfile runtime stage:
+#        COPY --from=litestream/litestream:0.3 /usr/local/bin/litestream /usr/local/bin/litestream
+#        COPY docker/litestream.yml /etc/litestream.yml
+#   4. docker/start.mjs: spawn `litestream replicate` alongside the other two
+#      children (same restart policy as the scheduler), or wrap the whole
+#      supervisor with `litestream replicate -exec "node docker/start.mjs"`.
+#   5. Restore drill: litestream restore -o /data/hemline.db "$REPLICA_URL"
+
+dbs:
+  - path: /data/hemline.db
+    replicas:
+      - type: s3
+        # Tigris via Fly: https://fly.io/docs/tigris/
+        endpoint: https://fly.storage.tigris.dev
+        bucket: hemline-litestream # created by `fly storage create`
+        path: hemline.db
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        retention: 72h
+        sync-interval: 60s
