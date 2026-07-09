@@ -21,7 +21,15 @@ const dbPath = resolveDbPath();
 console.log(`[fix-brands] target db: ${dbPath}`);
 const report = fixBrands(createDb({ dbPath }), { apply });
 console.log(formatBrandFixReport(report));
-if (report.integrity.orphanedExtractions !== 0 || report.integrity.orphanedEmbeddings !== 0) {
-  console.error('[fix-brands] pre-existing orphaned extraction/embedding rows detected (not caused by this run)');
+// Delta-based gate: pre-existing orphans are normal cache remnants (listing
+// content changed → new hash → old extraction row lingers). Fail only if THIS
+// run grew the orphan count — the in-transaction check already rolls back in
+// that case, so this is belt-and-braces reporting.
+const i = report.integrity;
+if (
+  i.orphanedExtractions > i.orphanedExtractionsBefore ||
+  i.orphanedEmbeddings > i.orphanedEmbeddingsBefore
+) {
+  console.error('[fix-brands] this run would grow the orphan count — investigate before applying');
   process.exitCode = 1;
 }

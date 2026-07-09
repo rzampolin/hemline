@@ -146,6 +146,18 @@ describe('fixBrands', () => {
     expect(vectorsJoined.n).toBe(SEED.length);
   });
 
+  it('tolerates PRE-EXISTING orphaned cache rows (prod 2026-07-09: 13 stale remnants)', () => {
+    // A listing whose content changed leaves its old extraction row behind —
+    // normal cache history, not damage. The gate must be delta-based.
+    db.run(
+      sql`INSERT INTO extractions (content_hash, listing_id, model, extracted_at) VALUES ('stale-hash-no-listing', 'shopify:staud.clothing:st1', 'mock', 0)`,
+    );
+    const report = fixBrands(db, { apply: true });
+    expect(report.integrity.orphanedExtractionsBefore).toBe(1);
+    expect(report.integrity.orphanedExtractions).toBe(1); // unchanged — not grown
+    expect(report.changed).toBeGreaterThan(0); // migration still applied
+  });
+
   it('is idempotent: a second apply finds nothing to do', () => {
     fixBrands(db, { apply: true });
     const second = fixBrands(db, { apply: true });
