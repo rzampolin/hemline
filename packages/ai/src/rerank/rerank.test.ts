@@ -1,11 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Listing, RankedListing, UserProfile } from '@hemline/contracts';
-import { createAiClient } from '../client';
+import { createAiClient, createCostMeter, type AiClient } from '../client';
 import {
   createReranker,
   deterministicRerank,
+  estimateRerankOutputTokens,
   InMemoryRerankCache,
   rerankCacheKey,
+  rerankMaxOutputTokens,
+  RERANK_FAILURE_TTL_MS,
   templatedWhy,
 } from './index';
 
@@ -139,5 +142,237 @@ describe('InMemoryRerankCache TTL', () => {
     expect(await cache.get('k')).not.toBeNull();
     nowMs = 2_001;
     expect(await cache.get('k')).toBeNull();
+  });
+});
+
+/* ── live-call sizing + failure hardening (2026-07-09 prod incident) ─────── */
+
+type CreateFn = (req: unknown, opts?: unknown) => Promise<unknown>;
+
+function liveClient(create: CreateFn): AiClient {
+  return {
+    mode: 'live',
+    anthropic: { messages: { create } } as unknown as NonNullable<AiClient['anthropic']>,
+    meter: createCostMeter({} as NodeJS.ProcessEnv),
+    models: {
+      extraction: 'claude-haiku-4-5-20251001',
+      rerank: 'claude-haiku-4-5-20251001',
+      color: 'claude-sonnet-4-6',
+    },
+    effectiveMode: () => 'live',
+  };
+}
+
+function llmMessage(output: unknown, stopReason = 'end_turn') {
+  return {
+    stop_reason: stopReason,
+    content: [{ type: 'text', text: JSON.stringify(output) }],
+    usage: { input_tokens: 900, output_tokens: 350 },
+  };
+}
+
+describe('output-size math (max_tokens right-sizing)', () => {
+  it('worst case grows with candidate count and id length', () => {
+    const short = Array.from({ length: 10 }, (_, i) => `id${i}`);
+    const many = Array.from({ length: 24 }, (_, i) => `id${i}`);
+    const long = Array.from({ length: 24 }, (_, i) => `listing_${String(i).padStart(24, '0')}`);
+    expect(estimateRerankOutputTokens(many)).toBeGreaterThan(estimateRerankOutputTokens(short));
+    expect(estimateRerankOutputTokens(long)).toBeGreaterThan(estimateRerankOutputTokens(many));
+  });
+
+  it('max_tokens is 2× the worst case with a 512 floor', () => {
+    const ids = Array.from({ length: 24 }, (_, i) => `listing_${String(i).padStart(24, '0')}`);
+    expect(rerankMaxOutputTokens(ids)).toBe(2 * estimateRerankOutputTokens(ids));
+    expect(rerankMaxOutputTokens(['a'])).toBe(512);
+  });
+
+  it('documents the incident: 50 candidates × 18-word reasons overflow the old 1200 budget', () => {
+    const ids = Array.from({ length: 50 }, (_, i) => `listing_${String(i).padStart(20, '0')}`);
+    expect(estimateRerankOutputTokens(ids, 18)).toBeGreaterThan(1200);
+  });
+
+  it('passes the computed max_tokens to the API', async () => {
+    const cands = [candidate('a'), candidate('b')];
+    const ids = cands.map((c) => c.listing.id);
+    const create = vi.fn(async (_req: unknown) =>
+      llmMessage({ ranking: ids, reasons: ids.map((id) => ({ id, reason: 'ok' })) }),
+    );
+    const rerank = createReranker({
+      client: liveClient(create),
+      cache: new InMemoryRerankCache(),
+      logger: () => {},
+    });
+    await rerank(profile(), cands);
+    const req = create.mock.calls[0][0] as { max_tokens: number };
+    expect(req.max_tokens).toBe(rerankMaxOutputTokens(ids));
+  });
+});
+
+describe('live call: success, truncation, timeout, negative cache', () => {
+  it('successful call returns llm mode, caches, and the next call is a cache hit', async () => {
+    const cands = [candidate('a'), candidate('b')];
+    const output = {
+      ranking: ['b', 'a'],
+      reasons: [
+        { id: 'a', reason: 'Fresh find in your size.' },
+        { id: 'b', reason: 'Hits mid-calf on you.' },
+      ],
+    };
+    const create = vi.fn(async () => llmMessage(output));
+    const rerank = createReranker({
+      client: liveClient(create),
+      cache: new InMemoryRerankCache(),
+      logger: () => {},
+    });
+    const r1 = await rerank(profile(), cands);
+    expect(r1.mode).toBe('llm');
+    expect(r1.ranking).toEqual(['b', 'a']);
+    expect(r1.reasons.b).toMatch(/mid-calf/);
+    const r2 = await rerank(profile(), cands);
+    expect(r2.mode).toBe('cache');
+    expect(r2.ranking).toEqual(['b', 'a']);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('truncated response (stop_reason max_tokens) → loud log, deterministic fallback, 5min negative cache', async () => {
+    let nowMs = 0;
+    const cands = [candidate('a'), candidate('b')];
+    const create = vi.fn(async () => llmMessage({ ranking: [], reasons: [] }, 'max_tokens'));
+    const logs: string[] = [];
+    const rerank = createReranker({
+      client: liveClient(create),
+      cache: new InMemoryRerankCache(() => nowMs),
+      logger: (m) => logs.push(m),
+      now: () => nowMs,
+    });
+
+    const r1 = await rerank(profile(), cands);
+    expect(r1.mode).toBe('deterministic');
+    expect(r1.ranking).toEqual(['a', 'b']); // incoming order preserved
+    expect(logs.some((l) => l.includes('TRUNCATED'))).toBe(true);
+
+    // Within the failure TTL: negative cache absorbs the load — no re-spend.
+    const r2 = await rerank(profile(), cands);
+    expect(r2.mode).toBe('deterministic');
+    expect(r2.reasons.a).toBeTruthy(); // fresh templated reasons, not empty
+    expect(create).toHaveBeenCalledTimes(1);
+
+    // After the TTL the live path is retried.
+    nowMs = RERANK_FAILURE_TTL_MS + 1;
+    await rerank(profile(), cands);
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  it('hung API call hits the hard client-side timeout and negative-caches', async () => {
+    const cands = [candidate('a')];
+    const create = vi.fn(() => new Promise<never>(() => {})); // never resolves
+    const logs: string[] = [];
+    const rerank = createReranker({
+      client: liveClient(create),
+      cache: new InMemoryRerankCache(),
+      timeoutMs: 25,
+      logger: (m) => logs.push(m),
+    });
+    const t0 = Date.now();
+    const r1 = await rerank(profile(), cands);
+    expect(Date.now() - t0).toBeLessThan(1_000);
+    expect(r1.mode).toBe('deterministic');
+    expect(logs.some((l) => l.includes('timed out after 25ms'))).toBe(true);
+
+    const r2 = await rerank(profile(), cands); // negative cache, no second hang
+    expect(r2.mode).toBe('deterministic');
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('background (deterministic-first) mode', () => {
+  it('returns pending immediately (no LLM wait), background fill writes the cache, second call applies it synchronously', async () => {
+    const cands = [candidate('a'), candidate('b')];
+    const output = {
+      ranking: ['b', 'a'],
+      reasons: [{ id: 'b', reason: 'In your palette.' }],
+    };
+    const create = vi.fn(
+      () => new Promise((resolve) => setTimeout(() => resolve(llmMessage(output)), 300)),
+    );
+    const rerank = createReranker({
+      client: liveClient(create),
+      cache: new InMemoryRerankCache(),
+      background: true,
+      logger: () => {},
+    });
+
+    const t0 = Date.now();
+    const r1 = await rerank(profile(), cands, 'bg-success');
+    const elapsed = Date.now() - t0;
+    expect(elapsed).toBeLessThan(250); // did NOT wait for the 300ms LLM call
+    expect(r1.mode).toBe('pending');
+    expect(r1.ranking).toEqual(['a', 'b']); // deterministic order served as-is
+    expect(r1.costUsd).toBeNull();
+
+    await rerank.flush();
+    const r2 = await rerank(profile(), cands, 'bg-success');
+    expect(r2.mode).toBe('cache');
+    expect(r2.ranking).toEqual(['b', 'a']);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('concurrent misses for the same key dedupe to one live call', async () => {
+    const cands = [candidate('a'), candidate('b')];
+    const create = vi.fn(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(
+            () => resolve(llmMessage({ ranking: ['a', 'b'], reasons: [] })),
+            50,
+          ),
+        ),
+    );
+    const rerank = createReranker({
+      client: liveClient(create),
+      cache: new InMemoryRerankCache(),
+      background: true,
+      logger: () => {},
+    });
+    const [r1, r2] = await Promise.all([
+      rerank(profile(), cands, 'bg-dedupe'),
+      rerank(profile(), cands, 'bg-dedupe'),
+    ]);
+    expect(r1.mode).toBe('pending');
+    expect(r2.mode).toBe('pending');
+    await rerank.flush();
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('background failure negative-caches: later calls are deterministic (not pending) with no re-spend', async () => {
+    const cands = [candidate('a'), candidate('b')];
+    const create = vi.fn(async () => {
+      throw new Error('boom');
+    });
+    const logs: string[] = [];
+    const rerank = createReranker({
+      client: liveClient(create),
+      cache: new InMemoryRerankCache(),
+      background: true,
+      logger: (m) => logs.push(m),
+    });
+    const r1 = await rerank(profile(), cands, 'bg-failure');
+    expect(r1.mode).toBe('pending');
+    await rerank.flush();
+    expect(logs.some((l) => l.includes('[RERANK]') && l.includes('boom'))).toBe(true);
+
+    const r2 = await rerank(profile(), cands, 'bg-failure');
+    expect(r2.mode).toBe('deterministic');
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('cache-key stability during crawls', () => {
+  it('insensitive to candidate ORDER (same head set, jittered scores → same key)', () => {
+    expect(rerankCacheKey(profile(), ['a', 'b', 'c'])).toBe(rerankCacheKey(profile(), ['c', 'a', 'b']));
+  });
+
+  it('still sensitive to the candidate SET (new listing entering the head misses)', () => {
+    expect(rerankCacheKey(profile(), ['a', 'b', 'c'])).not.toBe(rerankCacheKey(profile(), ['a', 'b', 'd']));
   });
 });
