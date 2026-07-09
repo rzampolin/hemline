@@ -14,7 +14,14 @@
  */
 import { AdminIngestRequestSchema, type AdminIngestResponse } from '@hemline/contracts';
 import { runIngestForSource, type IngestRunOutcome } from '@hemline/ingest';
-import { ingestionHealth, insertIngestRun, listSourceIds, ingestRuns, type Db } from '@hemline/db';
+import {
+  clickoutStats,
+  ingestionHealth,
+  insertIngestRun,
+  listSourceIds,
+  ingestRuns,
+  type Db,
+} from '@hemline/db';
 import { eq } from 'drizzle-orm';
 import { checkAdminAuth } from '../../lib/admin-auth';
 import { getDb } from '../../lib/db';
@@ -26,7 +33,10 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   try {
     if (!checkAdminAuth(req)) return fail('unauthorized', 'admin basic auth required', 401);
-    return ok({ sources: ingestionHealth(getDb()) });
+    const db = getDb();
+    // `clickouts` is additive (spec G4, 2026-07-08): outbound-CTA attribution
+    // counts — total / last-24h / per-source — next to ingest health.
+    return ok({ sources: ingestionHealth(db), clickouts: clickoutStats(db) });
   } catch (err) {
     return serverError('admin/ingest', err);
   }

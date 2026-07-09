@@ -35,6 +35,7 @@ import { DELETE as saveDELETE } from '../saves/[listingId]/route';
 import { GET as alertsGET, POST as alertsPOST } from '../alerts/route';
 import { POST as findSimilarPOST } from '../find-similar/route';
 import { GET as adminIngestGET, POST as adminIngestPOST } from '../admin/ingest/route';
+import { POST as clickoutsPOST } from '../clickouts/route';
 import { GET as adminExtractionsGET } from '../admin/extractions/route';
 import { PATCH as adminExtractionPATCH } from '../admin/extractions/[contentHash]/route';
 
@@ -553,5 +554,198 @@ describe('admin', () => {
     } finally {
       delete process.env.ADMIN_BASIC_AUTH;
     }
+  });
+});
+
+/* ═══ QA P1 fixes (2026-07-08) ══════════════════════════════════════════ */
+
+describe('profile numeric bounds (QA P1 #2)', () => {
+  const patch = (body: unknown) => profilePATCH(jsonReq('/api/profile', 'PATCH', body));
+
+  it('accepts the boundary heights 48 and 84 inches', async () => {
+    expect((await patch({ heightInches: 48 })).status).toBe(200);
+    expect((await patch({ heightInches: 84 })).status).toBe(200);
+  });
+
+  it('rejects junk heights (0 / 999 / −5 / just-outside) with the standard envelope', async () => {
+    for (const h of [0, 999, -5, 47.9, 84.1]) {
+      const res = await patch({ heightInches: h });
+      expect(res.status, `height ${h}`).toBe(400);
+      const body = (await res.json()) as any;
+      expect(body.ok).toBe(false);
+      expect(body.error.code).toBe('invalid_request');
+      expect(body.error.message).toContain('heightInches');
+    }
+  });
+
+  it('rejects negative budgets and min > max; accepts sane windows', async () => {
+    expect((await patch({ budget: { minCents: -100, maxCents: 40000 } })).status).toBe(400);
+    expect((await patch({ budget: { minCents: 2000, maxCents: -1 } })).status).toBe(400);
+    expect((await patch({ budget: { minCents: 40000, maxCents: 2000 } })).status).toBe(400);
+    expect((await patch({ budget: { minCents: 0, maxCents: 0 } })).status).toBe(200);
+    expect((await patch({ budget: { minCents: null, maxCents: 25000 } })).status).toBe(200);
+  });
+
+  it('rejects sizes outside the normalized 0–26 domain', async () => {
+    expect((await patch({ sizesNormalized: [-2] })).status).toBe(400);
+    expect((await patch({ sizesNormalized: [8, 28] })).status).toBe(400);
+    expect((await patch({ sizesNormalized: [0, 26] })).status).toBe(200);
+  });
+
+  it('rejects non-numeric junk cleanly (NaN cannot ride JSON; strings 400)', async () => {
+    expect((await patch({ heightInches: 'NaN' })).status).toBe(400);
+    expect((await patch({ budget: { minCents: 'cheap', maxCents: null } })).status).toBe(400);
+    // restore the demo profile for the suites below
+    const restored = await data(
+      await patch({ heightInches: 64, sizesNormalized: [6, 8], budget: { minCents: null, maxCents: null } }),
+    );
+    expect(restored.heightInches).toBe(64);
+  });
+});
+
+describe('palette-boost toggle end-to-end (QA P1 #1)', () => {
+  const rankAll = async () => {
+    const ids: string[] = [];
+    let cursor: string | undefined;
+    let total = 0;
+    do {
+      const res = await data(
+        await rankPOST(
+          jsonReq('/api/rank', 'POST', {
+            userId: DEMO_USER_ID,
+            filters: {},
+            limit: 100,
+            cursor,
+            personalize: false,
+          }),
+        ),
+      );
+      total = res.totalMatched;
+      ids.push(...res.items.map((i: any) => i.listing.id));
+      cursor = res.nextCursor ?? undefined;
+    } while (cursor);
+    return { ids, total };
+  };
+
+  it('paletteBoostEnabled round-trips through PATCH/GET (default true)', async () => {
+    const initial = await data(await profileGET(jsonReq('/api/profile', 'GET')));
+    expect(initial.paletteBoostEnabled).toBe(true); // legacy/NULL → enabled
+
+    const off = await data(
+      await profilePATCH(jsonReq('/api/profile', 'PATCH', { paletteBoostEnabled: false })),
+    );
+    expect(off.paletteBoostEnabled).toBe(false);
+    const read = await data(await profileGET(jsonReq('/api/profile', 'GET')));
+    expect(read.paletteBoostEnabled).toBe(false);
+
+    const on = await data(
+      await profilePATCH(jsonReq('/api/profile', 'PATCH', { paletteBoostEnabled: true })),
+    );
+    expect(on.paletteBoostEnabled).toBe(true);
+  });
+
+  it('boost on vs off: identical result SET (never hides), different order', async () => {
+    const prof = await data(await profileGET(jsonReq('/api/profile', 'GET')));
+    expect(prof.palette.length).toBeGreaterThan(0); // seeded soft-autumn palette
+
+    await data(await profilePATCH(jsonReq('/api/profile', 'PATCH', { paletteBoostEnabled: true })));
+    const on = await rankAll();
+    await data(await profilePATCH(jsonReq('/api/profile', 'PATCH', { paletteBoostEnabled: false })));
+    const off = await rankAll();
+
+    expect(off.total).toBe(on.total);
+    expect([...off.ids].sort()).toEqual([...on.ids].sort()); // set identical
+    expect(off.ids).not.toEqual(on.ids); // boost re-orders when palette matches exist
+
+    // restore
+    await data(await profilePATCH(jsonReq('/api/profile', 'PATCH', { paletteBoostEnabled: true })));
+  });
+});
+
+describe('clickouts (spec G4, QA P1 #4)', () => {
+  let listingId: string;
+
+  it('records a clickout for a session user', async () => {
+    const feed = await data(
+      await rankPOST(
+        jsonReq('/api/rank', 'POST', { userId: DEMO_USER_ID, filters: {}, limit: 1, personalize: false }),
+      ),
+    );
+    listingId = feed.items[0].listing.id;
+    const res = await clickoutsPOST(jsonReq('/api/clickouts', 'POST', { listingId }));
+    expect(res.status).toBe(200);
+    expect(await data(res)).toEqual({ recorded: true });
+  });
+
+  it('tolerates guests: no session, sendBeacon-style text/plain body', async () => {
+    const res = await clickoutsPOST(
+      new Request('http://test/api/clickouts', {
+        method: 'POST',
+        headers: { 'content-type': 'text/plain' }, // sendBeacon default framing
+        body: JSON.stringify({ listingId }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(await data(res)).toEqual({ recorded: true });
+  });
+
+  it('404s an unknown listing with the standard envelope', async () => {
+    const res = await clickoutsPOST(jsonReq('/api/clickouts', 'POST', { listingId: 'fixture:nope:1' }));
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as any;
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe('not_found');
+  });
+
+  it('rejects a malformed body cleanly', async () => {
+    expect((await clickoutsPOST(jsonReq('/api/clickouts', 'POST', {}))).status).toBe(400);
+  });
+
+  it('surfaces aggregate counts in GET /api/admin/ingest (additive field)', async () => {
+    const health = await data(await adminIngestGET(jsonReq('/api/admin/ingest', 'GET')));
+    expect(health.clickouts.total).toBeGreaterThanOrEqual(2);
+    expect(health.clickouts.last24h).toBeGreaterThanOrEqual(2);
+    expect(health.clickouts.bySource['fixture:shopify']).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('currency (QA P1 #3): GBP fixture', () => {
+  const GBP_ID = 'fixture:shopify:sister-jane-tapestry-jacquard-midi-9901';
+
+  it('serves the native GBP price on detail (display is native-currency)', async () => {
+    const detail = await data(
+      await listingGET(jsonReq(`/api/listings/${encodeURIComponent(GBP_ID)}`, 'GET'), {
+        params: Promise.resolve({ id: GBP_ID }),
+      }),
+    );
+    expect(detail.listing.priceCents).toBe(12900);
+    expect(detail.listing.currency).toBe('GBP');
+  });
+
+  it('budget hard-filter compares the USD equivalent, not raw pence', async () => {
+    // £129 → 16383 USD¢: a $150 max budget must exclude it even though the raw
+    // pence value (12900) would slip under; $170 must include it.
+    const under = await data(
+      await rankPOST(
+        jsonReq('/api/rank', 'POST', {
+          userId: DEMO_USER_ID,
+          filters: { query: 'tapestry jacquard', priceMaxCents: 15000 },
+          limit: 10,
+          personalize: false,
+        }),
+      ),
+    );
+    expect(under.items.map((i: any) => i.listing.id)).not.toContain(GBP_ID);
+    const over = await data(
+      await rankPOST(
+        jsonReq('/api/rank', 'POST', {
+          userId: DEMO_USER_ID,
+          filters: { query: 'tapestry jacquard', priceMaxCents: 17000 },
+          limit: 10,
+          personalize: false,
+        }),
+      ),
+    );
+    expect(over.items.map((i: any) => i.listing.id)).toContain(GBP_ID);
   });
 });

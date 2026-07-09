@@ -330,6 +330,8 @@ export default function DressDetailPage() {
             size="lg"
             full
             data-testid="shop-cta"
+            // G4 click/attribution log — non-blocking beacon, never delays the tab
+            onClick={() => api.recordClickout(listing.id)}
           >
             Shop on {shopLabel} ↗
           </ButtonLink>

@@ -184,6 +184,32 @@ export const api = {
   },
 
   /**
+   * Clickout / attribution beacon (spec G4). Fire-and-forget: never blocks or
+   * delays the outbound navigation, and failures are silently dropped.
+   * sendBeacon survives the tab losing focus to the new one; the fetch
+   * fallback uses keepalive for the same reason. No-op in mock mode.
+   */
+  recordClickout(listingId: string): void {
+    if (MOCK_MODE || typeof window === 'undefined') return;
+    const payload = JSON.stringify({ listingId });
+    try {
+      if (
+        navigator.sendBeacon?.('/api/clickouts', new Blob([payload], { type: 'application/json' }))
+      ) {
+        return;
+      }
+    } catch {
+      /* fall through to fetch */
+    }
+    void fetch('/api/clickouts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+      keepalive: true,
+    }).catch(() => {});
+  },
+
+  /**
    * "Find dresses like this" (B4) — live mode hits the real
    * POST /api/find-similar (multipart photo | JSON { imageUrl | hint });
    * mock mode keeps the deterministic client-side attribute matcher.

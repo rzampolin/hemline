@@ -50,7 +50,9 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setProfile(p);
         setSaved(getSavedIds()); // instant local echo…
-        setBoost(readLocal<boolean>(KEYS.paletteBoost, true));
+        // server-persisted global toggle (spec D2, QA P1 #1); localStorage is
+        // the fallback for mock mode / profiles minted before the field
+        setBoost(p.paletteBoostEnabled ?? readLocal<boolean>(KEYS.paletteBoost, true));
         // …then the server rack is authoritative (live mode; mock reads local)
         api
           .getSavedIdsRemote()
@@ -112,8 +114,14 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setPaletteBoost = useCallback((enabled: boolean) => {
-    setBoost(enabled);
-    writeLocal(KEYS.paletteBoost, enabled);
+    setBoost(enabled); // optimistic
+    writeLocal(KEYS.paletteBoost, enabled); // mock-mode + pre-sync parity
+    // persist on the profile so /api/rank honors it server-side (QA P1 #1)
+    setProfile((prev) => (prev ? { ...prev, paletteBoostEnabled: enabled } : prev));
+    void api
+      .patchProfile({ paletteBoostEnabled: enabled })
+      .then(setProfile)
+      .catch(() => {}); // optimistic state stands; next session re-syncs
   }, []);
 
   const dismissPaletteChip = useCallback((listingId: string) => {

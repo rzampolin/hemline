@@ -183,12 +183,14 @@ export function toRankedListings(
   candidates: CandidateListing[],
   now = Date.now(),
 ): RankedListing[] {
+  // same D2 toggle semantics as the rank pipeline (QA P1 #1)
+  const paletteOn = profile.paletteBoostEnabled !== false;
   return candidates.map((c) => {
     const hem = hemForUser(c.listing, profile.heightInches, profile.heelPrefInches);
     const ageDays = Math.max(0, (now - c.listing.lastSeenAt) / 86_400_000);
     const decay = freshnessDecay(ageDays, halfLifeDaysForSource(c.listing.sourceId));
     const sim = attributeSimilarity(profile.styleTags, c.attributeVector);
-    const boost = paletteBoost(profile.palette, c.listing.colors);
+    const boost = paletteOn ? paletteBoost(profile.palette, c.listing.colors) : 1;
     return {
       listing: c.listing,
       hem,
