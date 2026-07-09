@@ -5,7 +5,9 @@
  * statements is the right shape at this scale (ARCHITECTURE §10 risk 4).
  * Cached on globalThis so Next dev HMR doesn't leak file handles.
  *
- * Path resolution: $DATABASE_PATH (absolute or repo-root-relative), else the
+ * Path resolution: $DATABASE_PATH (absolute, or relative to process.cwd() —
+ * NOTE: under `next dev`/`next start` the cwd is apps/web, so prefer absolute
+ * paths in env; e2e config computes one), else the
  * first `data/hemline.db` found walking up from cwd — `next dev` runs with
  * cwd=apps/web while the seed writes to <repo>/data/hemline.db.
  */
