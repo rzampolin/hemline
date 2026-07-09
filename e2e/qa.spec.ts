@@ -292,12 +292,55 @@ test('color: quiz fallback → season → chips removable → palette never hide
   await page.getByRole('button', { name: 'Turn off palette boost' }).click();
   await expect(page.getByText('boosting your palette')).toHaveCount(0);
 
+  // QA P1 #1 (2026-07-08): the toggle is server-persisted, not cosmetic —
+  // it must round-trip through the API so /api/rank stops boosting.
+  if (!isMock()) {
+    await expect
+      .poll(async () => {
+        const res = await page.request.get('/api/profile');
+        const { data } = await res.json();
+        return data.paletteBoostEnabled;
+      }, 'toggle-off must persist to the profile')
+      .toBe(false);
+  }
+
   // HARD REQUIREMENT: palette must never hide dresses — identical result set
   if (before) {
     const after = await rankAll();
     expect(after.total, 'palette must not change totalMatched').toBe(before.total);
     expect(after.ids, 'palette must not change the result SET (order may differ)').toEqual(before.ids);
   }
+});
+
+/* ═══ Currency (QA P1 #3): native display, USD-equivalent budget ═════════ */
+
+test('currency: GBP listing displays £ natively and budget-filters in USD', async ({ page }) => {
+  test.skip(isMock(), 'the GBP fixture id exists in the seeded real-mode db only');
+  const GBP_ID = 'fixture:shopify:sister-jane-tapestry-jacquard-midi-9901';
+
+  // native-currency display on the detail page (£129, not $129)
+  await page.goto(`/dress/${encodeURIComponent(GBP_ID)}`);
+  await expect(page.getByText('£129', { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('$129', { exact: true })).toHaveCount(0);
+  await shot(page, 'gbp-detail');
+
+  // budget hard-filter uses the USD equivalent (£129 ≈ $164), not raw pence
+  await page.request.get('/api/session'); // ensure a session cookie for /api/rank
+  const rankWithMax = async (priceMaxCents: number) => {
+    const res = await page.request.post('/api/rank', {
+      data: {
+        userId: 'cookie',
+        filters: { query: 'tapestry jacquard', priceMaxCents },
+        limit: 10,
+        personalize: false,
+      },
+    });
+    expect(res.ok()).toBeTruthy();
+    const { data } = await res.json();
+    return (data.items as { listing: { id: string } }[]).map((i) => i.listing.id);
+  };
+  expect(await rankWithMax(15000)).not.toContain(GBP_ID); // $150 < $164 equiv
+  expect(await rankWithMax(17000)).toContain(GBP_ID); // $170 ≥ $164 equiv
 });
 
 /* ═══ F1 rack: save → unsave → possibly-sold ═════════════════════════════ */
