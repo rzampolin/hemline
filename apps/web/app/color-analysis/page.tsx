@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation';
 import type { ColorAnalysisResult } from '@hemline/contracts';
 import { Button, ErrorState, Spinner } from '@hemline/ui';
 import { api } from '../../lib/api';
+import { track } from '../../lib/analytics';
 import { ResultView } from './result-view';
 
 type Phase = 'intro' | 'analyzing' | 'result' | 'error';
@@ -25,10 +26,12 @@ export default function ColorAnalysisPage() {
   const analyze = async (file: File) => {
     setPreview(URL.createObjectURL(file));
     setPhase('analyzing');
+    track({ type: 'color_analysis_started', props: { method: 'selfie' } });
     try {
       const res = await api.colorAnalysis(file);
       setResult(res);
       setPhase('result');
+      track({ type: 'color_analysis_completed', props: { method: 'selfie' } });
     } catch {
       setPhase('error');
     }

@@ -15,6 +15,7 @@ import {
 } from 'react';
 import type { ColorSeason, ProfilePatch, SwipeEvent, UserProfile } from '@hemline/contracts';
 import { api, getSavedIds, setSavedIds } from './api';
+import { track } from './analytics';
 import { KEYS, readLocal, removeLocal, writeLocal } from './local';
 
 interface ProfileStore {
@@ -91,8 +92,13 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       setSavedIds(next);
       // real rack endpoints (POST /api/saves, DELETE /api/saves/:id) in live
       // mode; mock mode records a 'save' swipe so taste learning stays at parity
-      if (has) void api.unsave(listingId).catch(() => {});
-      else void api.save(listingId, context).catch(() => {});
+      if (has) {
+        void api.unsave(listingId).catch(() => {});
+        track({ type: 'listing_unsaved', props: {} });
+      } else {
+        void api.save(listingId, context).catch(() => {});
+        track({ type: 'listing_saved', props: { context } });
+      }
       return next;
     });
   }, []);

@@ -28,6 +28,7 @@ import {
   sourceLabel,
 } from '@hemline/ui';
 import { api } from '../../../lib/api';
+import { track } from '../../../lib/analytics';
 import { useProfile } from '../../../lib/profile-store';
 import { resolveImage } from '../../../lib/img';
 import { DEFAULT_HEIGHT_INCHES, hemForUser } from '../../../lib/hem';
@@ -51,7 +52,13 @@ export default function DressDetailPage() {
     setError(null);
     api
       .getListing(listingId)
-      .then((d) => !cancelled && setData(d))
+      .then((d) => {
+        if (cancelled) return;
+        setData(d);
+        // analytics: one detail view per successful load (source = catalog
+        // source id — resale vs brand mix, denominator for outbound CTR)
+        track({ type: 'listing_viewed', props: { source: d.listing.sourceId.slice(0, 64) } });
+      })
       .catch((e: Error) => !cancelled && setError(e.message || 'Could not load this dress.'));
     return () => {
       cancelled = true;

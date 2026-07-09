@@ -21,6 +21,7 @@ import {
   lengthClassLabel,
 } from '@hemline/ui';
 import { api } from '../../lib/api';
+import { track } from '../../lib/analytics';
 import { useProfile } from '../../lib/profile-store';
 import { resolveImage } from '../../lib/img';
 import { KEYS, readLocal, writeLocal } from '../../lib/local';
@@ -64,6 +65,7 @@ export default function CalibratePage() {
   }, [profile]);
 
   const finish = useCallback(async () => {
+    track({ type: 'deck_completed', props: {} });
     setBuilding(true);
     const msgs = setInterval(() => setBuildMsg((m) => Math.min(m + 1, 2)), 800);
     const swiped = readLocal<string[]>(KEYS.swipedIds, []);
@@ -83,6 +85,7 @@ export default function CalibratePage() {
       if (!deck || index >= deck.length || flying) return;
       const item = deck[index];
       events.current.push({ listingId: item.listing.id, verdict, context: 'calibration' });
+      track({ type: 'deck_swipe', props: { verdict, index: Math.min(index, 99) } });
       setFlying(verdict === 'dislike' ? 'left' : 'right');
       setTimeout(() => {
         setFlying(null);

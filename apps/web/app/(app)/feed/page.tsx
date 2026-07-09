@@ -21,7 +21,9 @@ import {
   Spinner,
   hemShort,
 } from '@hemline/ui';
+import type { FilterKind } from '@hemline/contracts';
 import { api, type FeedFilters, type SourceKindFilter } from '../../../lib/api';
+import { track } from '../../../lib/analytics';
 import { useProfile } from '../../../lib/profile-store';
 import { ListingGrid } from '../../components/grid';
 import { KEYS, readLocal, writeLocal } from '../../../lib/local';
@@ -85,6 +87,21 @@ function stateToQuery(s: FeedState): string {
   return q ? `?${q}` : '';
 }
 
+/** Which filter facets changed between two states (analytics: filter_applied). */
+function changedFilterKinds(prev: FeedState, next: FeedState): FilterKind[] {
+  const csvDiff = (a: unknown[], b: unknown[]) =>
+    a.length !== b.length || a.some((v, i) => v !== b[i]);
+  const kinds: FilterKind[] = [];
+  if (csvDiff(prev.sizes, next.sizes)) kinds.push('size');
+  if (prev.pmin !== next.pmin || prev.pmax !== next.pmax) kinds.push('price');
+  if (csvDiff(prev.lens, next.lens)) kinds.push('length');
+  if (csvDiff(prev.colors, next.colors)) kinds.push('color');
+  if (csvDiff(prev.brands, next.brands)) kinds.push('brand');
+  if (csvDiff(prev.sources, next.sources)) kinds.push('source');
+  if (prev.cond !== next.cond) kinds.push('condition');
+  return kinds;
+}
+
 export default function FeedPage() {
   return (
     <Suspense
@@ -120,6 +137,8 @@ function FeedInner() {
   const [inviteDismissed, setInviteDismissed] = useState(true);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const requestSeq = useRef(0);
+  const pageRef = useRef(0);
+  const lastTrackedQuery = useRef('');
 
   useEffect(() => {
     setInviteDismissed(readLocal<boolean>(KEYS.colorInviteDismissed, false));
@@ -181,6 +200,28 @@ function FeedInner() {
         setCursor(res.nextCursor);
         setTotal(res.totalMatched);
         if (!append) setInterpreted(res.interpreted ?? null);
+        // analytics (fire-and-forget): page views + search submissions with
+        // their result counts (zero-result queries = catalog-gap signal).
+        // Quiet rerank refetches re-render the same page — not a new view.
+        if (!quiet) {
+          pageRef.current = append ? pageRef.current + 1 : 0;
+          track({ type: 'feed_viewed', props: { page: Math.min(pageRef.current, 999) } });
+        }
+        if (!append && !quiet) {
+          if (state.q && state.q !== lastTrackedQuery.current) {
+            lastTrackedQuery.current = state.q;
+            track({
+              type: 'search_submitted',
+              props: {
+                query: state.q.slice(0, 120),
+                interpreted: res.interpreted != null,
+                resultCount: res.totalMatched,
+              },
+            });
+          } else if (!state.q) {
+            lastTrackedQuery.current = '';
+          }
+        }
         // Personalized order lands asynchronously: one quiet refetch after the
         // background rerank has had time to warm the cache. Quiet loads never
         // re-schedule (refetch-once), and any interaction that bumps
@@ -199,7 +240,7 @@ function FeedInner() {
         }
       }
     },
-    [profile, buildFilters],
+    [profile, buildFilters, state.q],
   );
 
   useEffect(() => {
@@ -422,6 +463,9 @@ function FeedInner() {
         meta={meta}
         onApply={(next) => {
           setFiltersOpen(false);
+          for (const kind of changedFilterKinds(state, next)) {
+            track({ type: 'filter_applied', props: { kind } });
+          }
           apply(next);
         }}
       />

@@ -5,11 +5,12 @@
  * vein color, jewelry metal, white-vs-cream, sun reaction, natural hair, eyes.
  * Deterministic — no camera or LLM needed.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ColorAnalysisResult, QuizAnswers } from '@hemline/contracts';
 import { Button, ProgressBar, Spinner } from '@hemline/ui';
 import { api } from '../../../lib/api';
+import { track } from '../../../lib/analytics';
 import { ResultView } from '../result-view';
 
 interface Question<K extends keyof QuizAnswers> {
@@ -98,6 +99,12 @@ export default function ColorQuizPage() {
   const [answers, setAnswers] = useState<Partial<QuizAnswers>>({});
   const [phase, setPhase] = useState<'quiz' | 'scoring' | 'result'>('quiz');
   const [result, setResult] = useState<ColorAnalysisResult | null>(null);
+  const startTracked = useRef(false);
+  useEffect(() => {
+    if (startTracked.current) return;
+    startTracked.current = true;
+    track({ type: 'color_analysis_started', props: { method: 'quiz' } });
+  }, []);
 
   const q = QUESTIONS[step];
 
@@ -113,6 +120,7 @@ export default function ColorQuizPage() {
       const res = await api.colorAnalysisQuiz({ answers: next as QuizAnswers });
       setResult(res);
       setPhase('result');
+      track({ type: 'color_analysis_completed', props: { method: 'quiz' } });
     } catch {
       setPhase('quiz');
     }

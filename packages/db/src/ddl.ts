@@ -164,6 +164,15 @@ const STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_clickouts_listing ON clickouts(listing_id)`,
   `CREATE INDEX IF NOT EXISTS idx_clickouts_time ON clickouts(clicked_at)`,
+  `CREATE TABLE IF NOT EXISTS analytics_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT,
+    anon_id     TEXT NOT NULL,
+    event_type  TEXT NOT NULL,
+    props_json  TEXT NOT NULL DEFAULT '{}',
+    created_at  INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_analytics_type_time ON analytics_events(event_type, created_at)`,
   `CREATE TABLE IF NOT EXISTS extraction_corrections (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     content_hash  TEXT NOT NULL,

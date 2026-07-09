@@ -11,6 +11,7 @@ import Link from 'next/link';
 import type { HemPosition } from '@hemline/contracts';
 import { Button, Chip, DualRange, ProgressBar, Stepper, Spinner } from '@hemline/ui';
 import { api } from '../../lib/api';
+import { track } from '../../lib/analytics';
 import { useProfile } from '../../lib/profile-store';
 import { KEYS, readLocal, writeLocal } from '../../lib/local';
 
@@ -96,6 +97,16 @@ export default function OnboardingPage() {
   const [matchCount, setMatchCount] = useState<number | null>(null);
   const hydrated = useRef(false);
 
+  // funnel instrumentation (spec §5: quiz completion + per-screen drop-off)
+  const quizStartedAt = useRef<number>(Date.now());
+  const startTracked = useRef(false);
+  useEffect(() => {
+    if (startTracked.current) return;
+    startTracked.current = true;
+    quizStartedAt.current = Date.now();
+    track({ type: 'quiz_started', props: {} });
+  }, []);
+
   useEffect(() => {
     if (!profile || hydrated.current) return;
     hydrated.current = true;
@@ -172,11 +183,17 @@ export default function OnboardingPage() {
 
   const next = useCallback(async () => {
     void saveStep(step);
+    track({ type: 'quiz_step_completed', props: { step } });
     if (step < TOTAL) setStep(step + 1);
   }, [step, saveStep]);
 
   const finish = useCallback(async () => {
     await saveStep(step);
+    track({ type: 'quiz_step_completed', props: { step } });
+    track({
+      type: 'quiz_completed',
+      props: { durationMs: Math.min(Math.max(0, Date.now() - quizStartedAt.current), 7_200_000) },
+    });
     await update({ onboarded: true });
     router.push('/calibrate');
   }, [saveStep, step, update, router]);

@@ -334,6 +334,32 @@ export const clickouts = sqliteTable(
   ],
 );
 
+/**
+ * First-party product analytics (additive, 2026-07-09). One SMALL row per
+ * whitelisted client event (see @hemline/contracts AnalyticsEventSchema —
+ * unknown types/props never reach this table). props_json holds enum/number
+ * props only; the single free-text exception is the search query. user_id is
+ * nullable (guests recorded via anon_id only, no FK so pre-session beacons
+ * never fail); anon_id is a client-minted per-browsing-session token.
+ */
+export const analyticsEvents = sqliteTable(
+  'analytics_events',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    /** nullable: guests are recorded anonymously (linkage policy: docs/decisions-analytics.md) */
+    userId: text('user_id'),
+    /** per-browsing-session anon token (sessionStorage uuid) — funnel dedup for guests */
+    anonId: text('anon_id').notNull(),
+    /** whitelisted event type (contracts ANALYTICS_EVENT_TYPES) */
+    eventType: text('event_type').notNull(),
+    /** strict per-type props, validated at the API boundary */
+    propsJson: text('props_json').notNull().default('{}'),
+    /** epoch ms, server-assigned at insert */
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [index('idx_analytics_type_time').on(t.eventType, t.createdAt)],
+);
+
 /** Spec G2: manual extraction-correction log (prompt-tuning audit trail). */
 export const extractionCorrections = sqliteTable('extraction_corrections', {
   id: integer('id').primaryKey({ autoIncrement: true }),
