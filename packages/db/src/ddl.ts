@@ -136,6 +136,13 @@ const STATEMENTS = [
     created_at   INTEGER NOT NULL,
     expires_at   INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS search_query_cache (
+    cache_key    TEXT PRIMARY KEY,
+    parse_json   TEXT NOT NULL,
+    model        TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    expires_at   INTEGER NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS pending_alerts (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id     TEXT NOT NULL,

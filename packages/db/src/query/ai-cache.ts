@@ -23,7 +23,7 @@ import type {
   Silhouette,
 } from '@hemline/contracts';
 import type { Db } from '../client';
-import { extractions, listings, rerankCache } from '../schema';
+import { extractions, listings, rerankCache, searchQueryCache } from '../schema';
 import { parseJson } from './mappers';
 
 // ── extraction cache (mirrors ai's ExtractionCacheStore) ─────────────────
@@ -150,6 +150,49 @@ export function createRerankCacheStore(db: Db, now: () => number = Date.now): {
       db.insert(rerankCache)
         .values(row)
         .onConflictDoUpdate({ target: rerankCache.cacheKey, set: row })
+        .run();
+    },
+  };
+}
+
+// ── query-parse cache (mirrors ai's QueryParseCacheStore, global/30d TTL) ──
+
+/**
+ * Structurally matches @hemline/ai's `CachedQueryParse`: `parse` is the
+ * LlmQueryParse payload or null for a NEGATIVE entry (recent failure). This
+ * package stays below ai in the workspace graph, so the shape is duplicated
+ * structurally rather than imported.
+ */
+export interface CachedQueryParseRow {
+  parse: unknown | null;
+}
+
+export function createQueryParseCacheStore(db: Db, now: () => number = Date.now): {
+  get(cacheKey: string): Promise<CachedQueryParseRow | null>;
+  set(cacheKey: string, value: CachedQueryParseRow, expiresAtMs: number): Promise<void>;
+} {
+  return {
+    async get(cacheKey) {
+      db.delete(searchQueryCache).where(lte(searchQueryCache.expiresAt, now())).run();
+      const row = db
+        .select()
+        .from(searchQueryCache)
+        .where(eq(searchQueryCache.cacheKey, cacheKey))
+        .get();
+      if (!row) return null;
+      return { parse: parseJson<unknown | null>(row.parseJson, null) };
+    },
+    async set(cacheKey, value, expiresAtMs) {
+      const row = {
+        cacheKey,
+        parseJson: JSON.stringify(value.parse ?? null),
+        model: process.env.RERANK_MODEL || 'claude-haiku-4-5-20251001',
+        createdAt: now(),
+        expiresAt: expiresAtMs,
+      };
+      db.insert(searchQueryCache)
+        .values(row)
+        .onConflictDoUpdate({ target: searchQueryCache.cacheKey, set: row })
         .run();
     },
   };

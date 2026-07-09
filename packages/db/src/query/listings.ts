@@ -49,6 +49,12 @@ export interface CandidateListing {
   attributeVector: Record<string, number>;
   /** source kind ('ebay' | 'shopify' | 'fixture' | …) for freshness half-life */
   sourceKind: string;
+  /**
+   * Raw listing description (additive, 2026-07-09 hybrid search): the contract
+   * `Listing` deliberately doesn't carry it, but the in-process lexical
+   * scorer needs the same text the SQL LIKE path could see.
+   */
+  description: string | null;
 }
 
 function sourceKinds(db: Db): Map<string, string> {
@@ -216,6 +222,7 @@ function toCandidate(
       ? parseJson<Record<string, number>>(extraction.attributeVectorJson, {})
       : {},
     sourceKind: kinds.get(row.sourceId) ?? 'unknown',
+    description: row.description ?? null,
   };
 }
 

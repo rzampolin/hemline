@@ -269,6 +269,24 @@ export const rerankCache = sqliteTable('rerank_cache', {
   expiresAt: integer('expires_at').notNull(),
 });
 
+/**
+ * Additive (2026-07-09, hybrid search): GLOBAL cache for stage-3 Haiku query
+ * parses. Parses are user-independent ("summer formal" parses once, ever), so
+ * the key is just sha256(normalized query). parse_json is the LlmQueryParse
+ * payload, or the literal 'null' for a NEGATIVE entry (recent failure, short
+ * TTL). Expired rows are deleted lazily on read, like rerank_cache.
+ */
+export const searchQueryCache = sqliteTable('search_query_cache', {
+  /** sha256(lowercased, whitespace-collapsed query) */
+  cacheKey: text('cache_key').primaryKey(),
+  /** LlmQueryParse JSON, or 'null' (negative entry) */
+  parseJson: text('parse_json').notNull(),
+  model: text('model').notNull(),
+  createdAt: integer('created_at').notNull(),
+  /** ~30d TTL (5min for negative entries) */
+  expiresAt: integer('expires_at').notNull(),
+});
+
 // ── Aux tables (adopted 2026-07-06 from lazy CREATEs in query/{alerts,admin}) ──
 
 /** Spec F4: alert toggles are stored, never sent (no email infra). */
