@@ -86,7 +86,12 @@ export const RankResponseSchema = z.object({
   nextCursor: z.string().nullable(),
   totalMatched: z.number().int().nonnegative(),
   rerank: z.object({
-    mode: z.enum(['llm', 'deterministic', 'cache']),
+    /**
+     * 'pending' (additive, 2026-07-09): the page was served in deterministic
+     * order and the LLM re-rank is warming the cache in the background —
+     * clients MAY quietly refetch once after a few seconds to pick it up.
+     */
+    mode: z.enum(['llm', 'deterministic', 'cache', 'pending']),
     costUsd: z.number().nullable(),
   }),
 });

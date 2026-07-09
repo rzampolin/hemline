@@ -3,7 +3,7 @@
  *
  *   candidates (hard filters, cap 500 — source/brand-stratified, 2026-07-09)
  *     → score₀ = similarity × paletteBoost × freshnessDecay
- *     → top-N (50) optional LLM re-rank → blend 0.6·llm + 0.4·score₀
+ *     → top-N (24) optional LLM re-rank → blend 0.6·llm + 0.4·score₀
  *     → paginate
  *
  * This package stays pure: data access and the LLM re-ranker are injected as
@@ -34,8 +34,14 @@ import {
   score0,
 } from './scoring';
 
-/** Only the top-N scored candidates are sent to the LLM re-ranker (doc §6). */
-export const RERANK_TOP_N = 50;
+/**
+ * Only the top-N scored candidates are sent to the LLM re-ranker (doc §6).
+ * 50 → 24 (2026-07-09): one page worth. 50 candidates × per-item reasons
+ * overflowed the re-rank call's output budget in prod (truncated JSON →
+ * deterministic fallback on every load); 24 halves the required output and
+ * covers everything the first render shows.
+ */
+export const RERANK_TOP_N = 24;
 
 export interface RerankOutcome {
   /** listing ids, best first; ids not present keep deterministic order after. */
@@ -43,7 +49,8 @@ export interface RerankOutcome {
   /** listingId → one-line "why it works for you" */
   reasons: Record<string, string>;
   costUsd: number | null;
-  mode: 'llm' | 'deterministic' | 'cache';
+  /** 'pending' = deterministic order served; LLM fill running in background. */
+  mode: 'llm' | 'deterministic' | 'cache' | 'pending';
 }
 
 export interface RerankPort {
@@ -147,11 +154,15 @@ export function createMatchingService(ports: MatchingPorts): MatchingService {
         const head = scored.slice(0, RERANK_TOP_N);
         const tail = scored.slice(RERANK_TOP_N);
         const outcome = await ports.rerank(profile, head, req.filters.query);
-        items = [...applyRerank(head, outcome), ...tail];
-        rerankMode = {
-          mode: outcome.mode === 'deterministic' ? 'deterministic' : outcome.mode,
-          costUsd: outcome.costUsd,
-        };
+        if (outcome.mode === 'pending') {
+          // Background fill in flight: serve the deterministic order untouched
+          // (no rank-position blend from an identity ranking) and tell the
+          // client it may refetch once the cache is warm.
+          rerankMode = { mode: 'pending', costUsd: null };
+        } else {
+          items = [...applyRerank(head, outcome), ...tail];
+          rerankMode = { mode: outcome.mode, costUsd: outcome.costUsd };
+        }
       } catch {
         // Re-ranker failure never breaks the feed — deterministic order stands.
         rerankMode = { mode: 'deterministic', costUsd: null };

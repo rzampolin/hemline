@@ -221,3 +221,48 @@ doc was ambiguous, contradictory, or silent. Everything else follows the doc.
       of re-billing a dead URL on every resume. Re-ingest that changes the
       listing content (new hash → new extraction row) naturally re-qualifies
       the listing if the store fixes its CDN.
+
+24. **Rerank truncation + deterministic-first rank (2026-07-09, prod 15s-feed
+    incident).** Root cause: `max_tokens=1200` was fixed while the required
+    structured output was 50 ranked ids + one ~18-word reason each (worst case
+    ~3.3K tokens) — EVERY live rerank truncated ("Unterminated string in JSON
+    at position ~3000"), spent ~10s + API cost, deterministically fell back,
+    and the failure was never cached, so every personalized load re-paid.
+    Fixes, all in `packages/ai/src/rerank`:
+    - **Right-sized interaction**: `RERANK_TOP_N` 50 → 24 (one page), reasons
+      capped at 12 words, and `max_tokens` computed from the output schema
+      per call (`estimateRerankOutputTokens` × 2 headroom, min 512; 24
+      prod-shaped candidates ⇒ 2,528). Live smoke: actual output 1,360 tokens
+      (54% of budget), $0.0088/call.
+    - **Explicit truncation detection**: the service calls `messages.create`
+      and checks `stop_reason === 'max_tokens'` BEFORE parsing — truncation
+      logs `[RERANK] TRUNCATED …` loudly and degrades instead of surfacing as
+      a JSON parse error.
+    - **Hard client-side timeout**: 6s blocking / 30s background (AbortSignal
+      + race). Smoke showed a completed 24-candidate Haiku call takes ~9s, so
+      the blocking path alone could never meet UX — hence:
+    - **Deterministic-first, rerank async**: `createReranker({background:
+      true})` (wired in apps/web) returns the deterministic page immediately
+      with new additive mode **'pending'** (contracts `RankResponse.rerank.
+      mode` + `RerankResult.mode`) and fills `rerank_cache` off the request
+      path, deduped per cache key process-wide; the next request with the
+      same head applies the cached ranking synchronously ('cache'). The feed
+      quietly refetches ONCE ~8s after seeing 'pending' (no skeleton/spinner;
+      skipped if the user changed filters or paginated — requestSeq guard;
+      quiet loads never re-schedule, so a still-warming cache just waits for
+      the next natural interaction). matching-service passes 'pending'
+      through WITHOUT the rank-position score blend (an identity ranking is
+      not an LLM opinion).
+    - **Negative caching**: any live failure (truncation, timeout, API error,
+      parse error) writes a deterministic entry with a 5-min TTL
+      (`RERANK_FAILURE_TTL_MS`); hits recompute fresh templated reasons and
+      report honest 'deterministic' — never 'cache' — and never re-spend
+      inside the TTL.
+    - **Cache-key stability during crawls**: the candidate-id hash is now over
+      the SORTED id set — the model fully re-orders the head anyway, so the
+      key only needs the set, and score jitter that permutes the same head
+      (freshness decay ticking during crawls) no longer misses. Tradeoff
+      considered: keying on truncated top-100 ids would survive head-set
+      churn too, but a cached ranking might then not cover the actual head;
+      rejected. A NEW listing entering the top-24 still misses — correct,
+      new content deserves a fresh rerank. 24h TTL unchanged.

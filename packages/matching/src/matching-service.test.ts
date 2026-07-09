@@ -189,6 +189,35 @@ describe('createMatchingService.rank', () => {
     expect(res.items.map((i) => i.listing.id).sort()).toEqual(['a', 'b', 'c']);
   });
 
+  it("re-ranker mode 'pending' serves the deterministic page untouched and reports pending", async () => {
+    const fresh = listing('fresh', { lastSeenAt: NOW - DAY });
+    const stale = listing('stale', { lastSeenAt: NOW - 40 * DAY });
+    // Background reranker contract: identity ranking + empty reasons + 'pending'.
+    const { service } = makeService([stale, fresh], {
+      rerank: { ranking: ['fresh', 'stale'], reasons: {}, costUsd: null, mode: 'pending' },
+    });
+    const res = await service.rank({
+      userId: 'user-1',
+      filters: {},
+      limit: 24,
+      personalize: true,
+    });
+    expect(res.rerank).toEqual({ mode: 'pending', costUsd: null });
+
+    // Identical order AND scores to the pure deterministic run — the identity
+    // ranking must not be blended in as if it were an LLM opinion.
+    const { service: baseline } = makeService([stale, fresh]);
+    const base = await baseline.rank({
+      userId: 'user-1',
+      filters: {},
+      limit: 24,
+      personalize: false,
+    });
+    expect(res.items.map((i) => i.listing.id)).toEqual(base.items.map((i) => i.listing.id));
+    expect(res.items.map((i) => i.score)).toEqual(base.items.map((i) => i.score));
+    expect(res.items.every((i) => i.whyItWorks === null)).toBe(true);
+  });
+
   it('paginates with an opaque cursor', async () => {
     const listings = Array.from({ length: 5 }, (_, i) =>
       listing(`l${i}`, { lastSeenAt: NOW - i * DAY }),

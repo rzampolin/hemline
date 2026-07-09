@@ -146,9 +146,15 @@ export async function rankForUser(
   const service = createMatchingService({
     loadProfile: async () => profile,
     loadCandidates: async () => queryCandidates(db, sqlOptions).map(toCandidateWithVector),
+    // Deterministic-first (2026-07-09, prod 15s-feed fix): the rank endpoint
+    // never blocks on Haiku. Cache hits apply synchronously ('cache'); misses
+    // return 'pending' and the LLM fills rerank_cache in the background (one
+    // in-flight call per cache key process-wide). Failures negative-cache
+    // 5 min. The feed quietly refetches once when it sees 'pending'.
     rerank: createReranker({
       client: getAiClient(),
       cache: createRerankCacheStore(db),
+      background: true,
     }),
     // FashionSigLIP style-profile scoring (2026-07-07 ml-eng): average of
     // liked/saved item embeddings vs each candidate's vector, blended 0.6/0.4

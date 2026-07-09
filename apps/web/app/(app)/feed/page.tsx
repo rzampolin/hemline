@@ -27,6 +27,14 @@ import { ListingGrid } from '../../components/grid';
 import { KEYS, readLocal, writeLocal } from '../../../lib/local';
 
 const PAGE_SIZE = 24;
+/**
+ * When /api/rank answers rerank.mode 'pending' (deterministic page served,
+ * personalized order warming in the background), refetch ONCE, quietly, after
+ * this delay. The swap happens as a plain state update on the settled grid —
+ * no skeleton flash, no spinner — and is skipped entirely if the user changed
+ * filters or paginated in the meantime (requestSeq guard).
+ */
+const PENDING_RERANK_REFETCH_MS = 8_000;
 const HEM_OPTIONS: HemPosition[] = ['upper_thigh', 'above_knee', 'knee', 'below_knee', 'mid_calf', 'ankle', 'floor'];
 
 /* ── URL <-> filter state (B3: shareable/back-button safe) ───────────────── */
@@ -145,13 +153,13 @@ function FeedInner() {
   }, [profile, state]);
 
   const load = useCallback(
-    async (append: boolean, cur?: string) => {
+    async (append: boolean, cur?: string, quiet = false) => {
       if (!profile) return;
       const seq = ++requestSeq.current;
-      if (!append) {
+      if (!append && !quiet) {
         setLoading(true);
         setError(false);
-      } else {
+      } else if (append) {
         setLoadingMore(true);
       }
       try {
@@ -166,8 +174,17 @@ function FeedInner() {
         setItems((prev) => (append ? [...prev, ...res.items] : res.items));
         setCursor(res.nextCursor);
         setTotal(res.totalMatched);
+        // Personalized order lands asynchronously: one quiet refetch after the
+        // background rerank has had time to warm the cache. Quiet loads never
+        // re-schedule (refetch-once), and any interaction that bumps
+        // requestSeq (filters, pagination) cancels the swap.
+        if (!append && !quiet && res.rerank.mode === 'pending') {
+          setTimeout(() => {
+            if (seq === requestSeq.current) void load(false, undefined, true);
+          }, PENDING_RERANK_REFETCH_MS);
+        }
       } catch {
-        if (seq === requestSeq.current && !append) setError(true);
+        if (seq === requestSeq.current && !append && !quiet) setError(true);
       } finally {
         if (seq === requestSeq.current) {
           setLoading(false);
