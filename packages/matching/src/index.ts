@@ -7,3 +7,4 @@ export * from './scoring';
 export * from './filters';
 export * from './diversity';
 export * from './matching-service';
+export * from './search-relevance';

@@ -24,6 +24,7 @@ import { brandKeyOf, interleaveByBrand } from './diversity';
 import { hemForUser } from './effective-length';
 import { blendSimilarity } from './embedding';
 import { applyHardFilters, CANDIDATE_CAP } from './filters';
+import { blendSearchScore } from './search-relevance';
 import { attributeStyleSimilarity, type StyleSimilarity } from './similarity';
 import {
   blendScores,
@@ -92,6 +93,15 @@ export interface MatchingPorts {
    * alone — the ml-less degradation path.
    */
   embeddingScore?: (listing: Listing) => number | null;
+  /**
+   * Optional query-relevance port (additive, 2026-07-09 hybrid search): a
+   * 0..1 relevance score for the active free-text query, or null when this
+   * listing has no relevance signal. Non-null blends
+   * 0.7·relevance + 0.3·score₀ (SEARCH_BLEND_WEIGHT) so query relevance leads
+   * while style/palette/freshness anchor; absent/null keeps score₀ untouched
+   * — the no-query (and degradation) path.
+   */
+  searchRelevance?: (listing: Listing) => number | null;
   /** Clock injection for tests. */
   now?: () => number;
 }
@@ -133,10 +143,12 @@ export function createMatchingService(ports: MatchingPorts): MatchingService {
       const attrSim = similarity.score(profile.styleTags, vector);
       const sim = blendSimilarity(attrSim, ports.embeddingScore?.(listing) ?? null);
       const boost = paletteOn ? paletteBoost(profile.palette, listing.colors) : 1;
+      const base = score0({ similarity: sim, paletteBoost: boost, freshnessDecay: decay });
+      const relevance = ports.searchRelevance?.(listing) ?? null;
       return {
         listing,
         hem,
-        score: score0({ similarity: sim, paletteBoost: boost, freshnessDecay: decay }),
+        score: relevance == null ? base : blendSearchScore(relevance, base),
         whyItWorks: null,
         freshnessDecay: decay,
       };
