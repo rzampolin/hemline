@@ -1,10 +1,13 @@
 /**
  * Production supervisor — the container's PID 1 (via `node docker/start.mjs`).
  *
- * Runs BOTH long-lived processes in one container, because the SQLite file
+ * Runs the long-lived processes in one container, because the SQLite file
  * lives on a single-machine Fly volume (single writer, docs/decisions-deploy.md):
- *   1. web       — Next standalone server  (apps/web/server.js)
- *   2. scheduler — node-cron ingest loop   (dist/ingest-scheduler.mjs)
+ *   1. web        — Next standalone server  (apps/web/server.js)
+ *   2. scheduler  — node-cron ingest loop   (dist/ingest-scheduler.mjs)
+ *   3. litestream — continuous SQLite backup to S3-compatible storage
+ *                   (only when the Tigris/S3 secrets are present; sidecar
+ *                   replicating the live db — docs/decisions-deploy.md §7)
  *
  * Why a ~100-line hand-rolled supervisor instead of `concurrently`/pm2:
  *  - zero extra runtime dependencies in the image;
@@ -15,8 +18,12 @@
  *    `docker stop` shut down WAL-checkpointed and clean.
  *
  * Env:
- *   INGEST_SCHEDULER=off  → web only (e.g. a throwaway debug machine)
- *   PORT / HOSTNAME       → passed through to the Next server (default 3000 / 0.0.0.0)
+ *   INGEST_SCHEDULER=off      → no in-container ingest cron
+ *   LITESTREAM_REPLICATE=off  → no backup child even when secrets are present
+ *                               (used during restores — see DEPLOY.md)
+ *   BUCKET_NAME / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY /
+ *   AWS_ENDPOINT_URL_S3       → all four present = litestream child runs
+ *   PORT / HOSTNAME           → passed through to the Next server (default 3000 / 0.0.0.0)
  */
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -86,15 +93,16 @@ function prefix(name, stream, out) {
   });
 }
 
-function launch(name, script, { onExit }) {
-  const child = spawn(process.execPath, [script], {
+function launch(name, argv, { onExit }) {
+  const [cmd, ...args] = argv;
+  const child = spawn(cmd, args, {
     env: process.env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   children.set(name, child);
   prefix(name, child.stdout, process.stdout);
   prefix(name, child.stderr, process.stderr);
-  console.log(`[start] ${name} up (pid ${child.pid}) — ${path.relative(ROOT, script)}`);
+  console.log(`[start] ${name} up (pid ${child.pid}) — ${argv.join(' ')}`);
   child.on('exit', (code, signal) => {
     children.delete(name);
     if (!shuttingDown) onExit(code, signal);
@@ -117,7 +125,7 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
 // ── web: standalone Next server; its death is fatal ────────────────────────
-launch('web', WEB_SERVER, {
+launch('web', [process.execPath, WEB_SERVER], {
   onExit(code, signal) {
     console.error(`[start] web exited (code=${code} signal=${signal}) — stopping container`);
     shutdown('web-exit');
@@ -134,7 +142,7 @@ if (process.env.INGEST_SCHEDULER === 'off') {
 } else {
   let backoffMs = 5_000;
   const startScheduler = () =>
-    launch('scheduler', SCHEDULER, {
+    launch('scheduler', [process.execPath, SCHEDULER], {
       onExit(code, signal) {
         console.error(
           `[start] scheduler exited (code=${code} signal=${signal}) — restarting in ${backoffMs / 1000}s`,
@@ -146,4 +154,39 @@ if (process.env.INGEST_SCHEDULER === 'off') {
       },
     });
   startScheduler();
+}
+
+// ── litestream: continuous SQLite backup, only when secrets exist ──────────
+// Sidecar replicating the live db over its own read-only SQLite handle (safe
+// with WAL) — NOT `litestream replicate -exec`, which would invert process
+// ownership (docs/decisions-deploy.md §7). Death policy mirrors the
+// scheduler: restart with capped backoff; a broken backup pipe must never
+// take the storefront down (Fly volume snapshots still exist underneath).
+const LITESTREAM_BIN = '/usr/local/bin/litestream';
+const LITESTREAM_CONFIG = '/etc/litestream.yml';
+const S3_VARS = ['BUCKET_NAME', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_ENDPOINT_URL_S3'];
+
+if (process.env.LITESTREAM_REPLICATE === 'off') {
+  console.log('[start] litestream disabled (LITESTREAM_REPLICATE=off)');
+} else if (S3_VARS.some((v) => !process.env[v])) {
+  console.log(
+    `[start] litestream backup off — missing ${S3_VARS.filter((v) => !process.env[v]).join(', ')} (fly storage create + fly secrets set to enable; see DEPLOY.md)`,
+  );
+} else if (!fs.existsSync(LITESTREAM_BIN)) {
+  console.warn(`[start] litestream binary missing at ${LITESTREAM_BIN} — backup off`);
+} else {
+  let lsBackoffMs = 5_000;
+  const startLitestream = () =>
+    launch('litestream', [LITESTREAM_BIN, 'replicate', '-config', LITESTREAM_CONFIG], {
+      onExit(code, signal) {
+        console.error(
+          `[start] litestream exited (code=${code} signal=${signal}) — restarting in ${lsBackoffMs / 1000}s`,
+        );
+        setTimeout(() => {
+          if (!shuttingDown) startLitestream();
+        }, lsBackoffMs).unref();
+        lsBackoffMs = Math.min(lsBackoffMs * 2, 300_000); // cap at 5 min
+      },
+    });
+  startLitestream();
 }

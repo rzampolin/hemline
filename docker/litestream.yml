@@ -1,30 +1,40 @@
-# Litestream scaffolding — continuous SQLite replication to object storage.
-# NOT wired into the image yet (documented follow-up, docs/decisions-deploy.md):
-# for the beta, Fly's daily volume snapshots (snapshot_retention = 5 in
-# fly.toml) are the backup story. Adopt this when the catalog/user data
-# outgrows "restore yesterday's snapshot".
+# Litestream — continuous SQLite replication to S3-compatible object storage
+# (Fly Tigris in production; docs/decisions-deploy.md §7). Baked into the image
+# at /etc/litestream.yml; docker/start.mjs runs `litestream replicate` as a
+# third supervised child ONLY when the four env vars below are present, so
+# local docker runs without secrets keep working identically.
 #
-# To enable (follow-up):
-#   1. Provision a bucket: `fly storage create` (Tigris, S3-compatible) and
-#      note the credentials it prints.
-#   2. fly secrets set LITESTREAM_ACCESS_KEY_ID=... LITESTREAM_SECRET_ACCESS_KEY=...
-#   3. Dockerfile runtime stage:
-#        COPY --from=litestream/litestream:0.3 /usr/local/bin/litestream /usr/local/bin/litestream
-#        COPY docker/litestream.yml /etc/litestream.yml
-#   4. docker/start.mjs: spawn `litestream replicate` alongside the other two
-#      children (same restart policy as the scheduler), or wrap the whole
-#      supervisor with `litestream replicate -exec "node docker/start.mjs"`.
-#   5. Restore drill: litestream restore -o /data/hemline.db "$REPLICA_URL"
+# Env (Tigris's standard names — `fly storage create` sets all of them as
+# app secrets; litestream expands ${VAR} in this file at load time and reads
+# AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY from the environment natively):
+#   BUCKET_NAME             bucket created by `fly storage create`
+#   AWS_ACCESS_KEY_ID       tid_...
+#   AWS_SECRET_ACCESS_KEY   tsec_...
+#   AWS_ENDPOINT_URL_S3     https://fly.storage.tigris.dev
+#
+# Litestream v0.5 auto-detects the Tigris endpoint (signed payloads, no MD5)
+# and defaults to path-style URLs whenever an explicit endpoint is set — the
+# same config therefore works against a local MinIO (the verification rig).
+#
+# Restore runbook: DEPLOY.md "Backups & restore".
 
 dbs:
   - path: /data/hemline.db
-    replicas:
-      - type: s3
-        # Tigris via Fly: https://fly.io/docs/tigris/
-        endpoint: https://fly.storage.tigris.dev
-        bucket: hemline-litestream # created by `fly storage create`
-        path: hemline.db
-        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
-        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
-        retention: 72h
-        sync-interval: 60s
+    replica:
+      type: s3
+      bucket: ${BUCKET_NAME}
+      path: hemline.db
+      endpoint: ${AWS_ENDPOINT_URL_S3}
+      region: auto
+      access-key-id: ${AWS_ACCESS_KEY_ID}
+      secret-access-key: ${AWS_SECRET_ACCESS_KEY}
+      # 10s cap on the data-loss window; writes are bursty (daily crawls,
+      # occasional user actions) so the steady-state PUT volume stays tiny.
+      sync-interval: 10s
+
+# Full-snapshot cadence + how far back point-in-time restore reaches.
+# 6h × 72h ≈ 12 snapshots of a ~12MB db (~150MB in the bucket, ~free on
+# Tigris); anything older is covered by Fly's daily volume snapshots (5 kept).
+snapshot:
+  interval: 6h
+  retention: 72h
