@@ -8,6 +8,7 @@
  */
 import { and, asc, desc, eq, gte, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { FX_TO_USD, type Listing } from '@hemline/contracts';
+import { stratifiedCap } from '@hemline/matching';
 import type { Db } from '../client';
 import { extractions, listingImages, listings, sources } from '../schema';
 import { parseJson, rowToListing, type ExtractionRow, type ListingRow } from './mappers';
@@ -103,6 +104,17 @@ function priceUsdCentsSql(): SQL {
 /**
  * SQL hard filters → capped candidate set, newest-first.
  * size ∩ price ∩ condition ∩ brand ∩ color family ∩ source ∩ text query ∩ freshness.
+ *
+ * Cap semantics (2026-07-09 fix, docs/decisions-matching.md): when more rows
+ * match than the cap, survivors are chosen SOURCE-FAIR (each source gets an
+ * equal share of the pool, up to its size) and BRAND-SPREAD within each
+ * source — via packages/matching `stratifiedCap` over a lightweight
+ * (id, source, brand, lastSeenAt) pass, then hydration of the winners. Plain
+ * "newest 500" collapsed to "the last store crawled" after sequential crawls
+ * (prod: petalandpup's 2,480-listing hour made the whole feed one brand).
+ * The RETURNED order stays newest-first, so callers (incl. explicit-filter
+ * search) see the same ordering contract; only which rows survive the cap
+ * changes — and only when matches > cap.
  */
 export function queryCandidates(db: Db, opts: CandidateQueryOptions = {}): CandidateListing[] {
   const now = Date.now();
@@ -148,13 +160,41 @@ export function queryCandidates(db: Db, opts: CandidateQueryOptions = {}): Candi
     }
   }
 
+  const cap = opts.cap ?? CANDIDATE_CAP;
+  const where = and(...conds);
+
+  // Lightweight pass: which rows match at all (the extraction join is only
+  // needed when length/color conditions reference it; harmless otherwise).
+  const matches = db
+    .select({
+      id: listings.id,
+      sourceId: listings.sourceId,
+      brand: listings.brand,
+      lastSeenAt: listings.lastSeenAt,
+    })
+    .from(listings)
+    .leftJoin(extractions, eq(extractions.listingId, listings.id))
+    .where(where)
+    .all();
+
+  // Over the cap → source-fair/brand-spread selection of the survivors
+  // (packages/matching stratifiedCap — one home for the algorithm), then
+  // hydrate exactly those ids. Under the cap → hydrate the matches directly.
+  const rowFilter =
+    matches.length > cap
+      ? inArray(
+          listings.id,
+          stratifiedCap(matches, cap).map((m) => m.id),
+        )
+      : where;
+
   const rows = db
     .select({ listing: listings, extraction: extractions })
     .from(listings)
     .leftJoin(extractions, eq(extractions.listingId, listings.id))
-    .where(and(...conds))
+    .where(rowFilter)
     .orderBy(desc(listings.lastSeenAt), asc(listings.id))
-    .limit(opts.cap ?? CANDIDATE_CAP)
+    .limit(cap)
     .all();
 
   const imagesByListing = imagesFor(
