@@ -60,6 +60,12 @@ only. `npm run embed` will just tell you to run `npm run ml:setup`.
 Fixture listings use placeholder images and are deliberately never embedded —
 visual search covers real ingested listings.
 
+## Deploying
+
+Production runs on Fly.io as a single machine (web + ingest scheduler in one
+container, SQLite on a volume). Founder-runnable steps: **[DEPLOY.md](DEPLOY.md)**;
+rationale: `docs/decisions-deploy.md`. Local check: `docker build -t hemline .`
+
 ## Ownership
 
 Each owned directory has an `OWNER.md`. Cross-module types live in

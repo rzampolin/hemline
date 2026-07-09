@@ -33,6 +33,7 @@ import { getDb } from '../lib/db';
 import { findSimilarByEmbedding } from '../lib/embeddings';
 import { fail, ok, serverError, zodFail } from '../lib/envelope';
 import { getAiClient, hemForUser, paletteMatches } from '../lib/matching';
+import { checkRateLimit } from '../lib/rate-limit';
 import { requireUserId } from '../lib/session';
 
 /** Reject absurd uploads before base64-ing them for the sidecar. */
@@ -85,6 +86,9 @@ export async function POST(req: Request) {
     const db = getDb();
     const userId = requireUserId(req, db);
     if (!userId) return fail('no_session', 'No session — call GET /api/session first', 401);
+    // AI-spending endpoint (Haiku extraction fallback) — prod rate limit, 10/min/user
+    if (!checkRateLimit('find-similar', userId, 10))
+      return fail('rate_limited', 'Too many similarity searches — try again in a minute', 429);
 
     let imageUrl: string | null = null;
     let imageBase64: string | null = null;
