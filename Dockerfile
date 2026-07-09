@@ -96,8 +96,12 @@ RUN HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 .venv/bin/python embed.py warmup
 FROM ${NODE_IMAGE} AS litestream
 ARG TARGETARCH
 ARG LITESTREAM_VERSION=0.5.14
-ADD https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-${TARGETARCH}.tar.gz /tmp/litestream.tar.gz
-RUN tar -xzf /tmp/litestream.tar.gz -C /usr/local/bin litestream \
+# Release assets name amd64 as "x86_64" (arm64 stays "arm64") — TARGETARCH
+# says "amd64", which 404'd on Fly's builders (2026-07-09). node:slim has no
+# curl/wget; node's fetch follows the GitHub → S3 redirect fine.
+RUN ARCH=$([ "$TARGETARCH" = "amd64" ] && echo x86_64 || echo "$TARGETARCH") \
+ && node -e "const fs=require('node:fs');fetch('https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-'+process.argv[1]+'.tar.gz').then(r=>{if(!r.ok)throw new Error('download '+r.status);return r.arrayBuffer()}).then(b=>fs.writeFileSync('/tmp/litestream.tar.gz',Buffer.from(b)))" "$ARCH" \
+ && tar -xzf /tmp/litestream.tar.gz -C /usr/local/bin litestream \
  && litestream version
 
 # ── runtime: standalone server + bundles + supervisor + ml sidecar ──────────
