@@ -39,8 +39,58 @@ export const HardFiltersSchema = z.object({
   sources: z.array(z.string()).optional(),
   /** free-text (FTS over title/brand/desc) */
   query: z.string().optional(),
+  /**
+   * Additive (2026-07-09, hybrid search): query terms the user explicitly
+   * un-chipped from the interpretation — these terms are NEVER mapped onto
+   * structured/semantic signals and participate as plain lexical text only.
+   * Ignored when `query` is absent.
+   */
+  lexicalTerms: z.array(z.string()).optional(),
 });
 export type HardFilters = z.infer<typeof HardFiltersSchema>;
+
+// ── search interpretation (additive, 2026-07-09 hybrid free-text search) ──
+
+/**
+ * One signal the query interpreter extracted from free text. `hard: true`
+ * signals became SQL hard filters (price/size/length/brand — things the user
+ * explicitly constrained); `hard: false` signals are ranking boosts only
+ * (occasion/color/fabric/silhouette/… — never filters, per the design rule
+ * that vibe/mood language must not hard-filter).
+ */
+export const InterpretedSignalSchema = z.object({
+  kind: z.enum([
+    'occasion',
+    'color',
+    'length',
+    'fabric',
+    'silhouette',
+    'neckline',
+    'pattern',
+    'brand',
+    'price',
+    'size',
+  ]),
+  /** the raw query text consumed (chip-removal key → HardFilters.lexicalTerms) */
+  term: z.string(),
+  /** canonical taxonomy value / display value (e.g. 'formal', 'pink', 'under $150') */
+  value: z.string(),
+  hard: z.boolean(),
+});
+export type InterpretedSignal = z.infer<typeof InterpretedSignalSchema>;
+
+/** What the hybrid search understood — additive on RankResponse so the UI can
+ * render removable chips. Absent on non-query requests. */
+export const SearchInterpretationSchema = z.object({
+  signals: z.array(InterpretedSignalSchema),
+  /** residual/vibe terms feeding semantic + lexical matching ('summer', 'cottagecore') */
+  vibe: z.array(z.string()),
+  /** true when the semantic-embedding stage contributed to this response */
+  semantic: z.boolean(),
+  /** which parser produced the interpretation */
+  parser: z.enum(['deterministic', 'llm', 'llm_cache']),
+});
+export type SearchInterpretation = z.infer<typeof SearchInterpretationSchema>;
 
 export const HemResultSchema = z.object({
   /** null when nothing to compute from */
@@ -94,6 +144,12 @@ export const RankResponseSchema = z.object({
     mode: z.enum(['llm', 'deterministic', 'cache', 'pending']),
     costUsd: z.number().nullable(),
   }),
+  /**
+   * Additive (2026-07-09): what the hybrid free-text interpreter extracted
+   * from `filters.query` — present only on query searches, so the UI can show
+   * removable interpretation chips. Explicit filter params never appear here.
+   */
+  interpreted: SearchInterpretationSchema.optional(),
 });
 export type RankResponse = z.infer<typeof RankResponseSchema>;
 
