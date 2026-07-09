@@ -8,7 +8,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import type { HemPosition, MetaFiltersResponse, RankedListing } from '@hemline/contracts';
+import type { HemPosition, MetaFiltersResponse, RankedListing, SearchInterpretation } from '@hemline/contracts';
 import {
   Button,
   CardSkeleton,
@@ -41,6 +41,8 @@ const HEM_OPTIONS: HemPosition[] = ['upper_thigh', 'above_knee', 'knee', 'below_
 
 interface FeedState {
   q: string;
+  /** un-chipped interpretation terms (kept lexical-only, B3 URL-reflected) */
+  lex: string[];
   sizes: number[];
   pmin: number | null;
   pmax: number | null;
@@ -55,6 +57,7 @@ function parseState(sp: URLSearchParams): FeedState {
   const csv = (k: string) => sp.get(k)?.split(',').filter(Boolean) ?? [];
   return {
     q: sp.get('q') ?? '',
+    lex: csv('lex'),
     sizes: csv('sizes').map(Number).filter(Number.isFinite),
     pmin: sp.get('pmin') ? Number(sp.get('pmin')) : null,
     pmax: sp.get('pmax') ? Number(sp.get('pmax')) : null,
@@ -69,6 +72,7 @@ function parseState(sp: URLSearchParams): FeedState {
 function stateToQuery(s: FeedState): string {
   const sp = new URLSearchParams();
   if (s.q) sp.set('q', s.q);
+  if (s.lex.length) sp.set('lex', s.lex.join(','));
   if (s.sizes.length) sp.set('sizes', s.sizes.join(','));
   if (s.pmin != null) sp.set('pmin', String(s.pmin));
   if (s.pmax != null) sp.set('pmax', String(s.pmax));
@@ -112,6 +116,7 @@ function FeedInner() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [meta, setMeta] = useState<MetaFiltersResponse | null>(null);
   const [searchDraft, setSearchDraft] = useState(state.q);
+  const [interpreted, setInterpreted] = useState<SearchInterpretation | null>(null);
   const [inviteDismissed, setInviteDismissed] = useState(true);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const requestSeq = useRef(0);
@@ -128,6 +133,7 @@ function FeedInner() {
     const p = profile;
     return {
       query: state.q || undefined,
+      lexicalTerms: state.q && state.lex.length ? state.lex : undefined,
       sizesNormalized: state.sizes.length
         ? state.sizes
         : p?.sizesNormalized.length
@@ -174,6 +180,7 @@ function FeedInner() {
         setItems((prev) => (append ? [...prev, ...res.items] : res.items));
         setCursor(res.nextCursor);
         setTotal(res.totalMatched);
+        if (!append) setInterpreted(res.interpreted ?? null);
         // Personalized order lands asynchronously: one quiet refetch after the
         // background rerank has had time to warm the cache. Quiet loads never
         // re-schedule (refetch-once), and any interaction that bumps
@@ -239,7 +246,7 @@ function FeedInner() {
             className="relative flex-1"
             onSubmit={(e) => {
               e.preventDefault();
-              apply({ ...state, q: searchDraft.trim() });
+              apply({ ...state, q: searchDraft.trim(), lex: [] });
             }}
           >
             <input
@@ -293,6 +300,33 @@ function FeedInner() {
           </div>
         )}
       </div>
+
+      {/* hybrid-search interpretation chips (removable — un-chipping forces
+          that term back to plain lexical matching via the `lex` URL param) */}
+      {state.q && !loading && interpreted && (interpreted.signals.length > 0 || interpreted.vibe.length > 0) && (
+        <div className="mt-3 flex flex-wrap items-center gap-2" data-testid="interpreted-chips">
+          <span className="text-[11px] text-ink-faint">Searching for</span>
+          {interpreted.signals.map((sig) => (
+            <RemovableChip
+              key={`${sig.kind}:${sig.value}`}
+              onRemove={() => apply({ ...state, lex: [...state.lex, sig.term] })}
+              removeLabel={`Search "${sig.term}" as plain text instead`}
+            >
+              {sig.value}
+            </RemovableChip>
+          ))}
+          {interpreted.vibe.map((term) => (
+            <RemovableChip
+              key={`vibe:${term}`}
+              className="bg-accent-soft text-accent"
+              onRemove={() => apply({ ...state, lex: [...state.lex, term] })}
+              removeLabel={`Search "${term}" as plain text instead`}
+            >
+              {interpreted.semantic ? `~${term}` : term}
+            </RemovableChip>
+          ))}
+        </div>
+      )}
 
       {needsOnboarding && (
         <div className="mt-4 rounded-2xl border border-accent/25 bg-accent-soft p-4">
@@ -358,7 +392,7 @@ function FeedInner() {
           <EmptyState
             title="Nothing matches — yet"
             action={
-              <Button variant="outline" onClick={() => apply({ q: '', sizes: [], pmin: null, pmax: null, lens: [], colors: [], brands: [], sources: [], cond: null })}>
+              <Button variant="outline" onClick={() => apply({ q: '', lex: [], sizes: [], pmin: null, pmax: null, lens: [], colors: [], brands: [], sources: [], cond: null })}>
                 Clear filters
               </Button>
             }
@@ -429,7 +463,7 @@ function FilterSheet({
         <div className="flex gap-2">
           <Button
             variant="ghost"
-            onClick={() => setDraft({ q: draft.q, sizes: [], pmin: null, pmax: null, lens: [], colors: [], brands: [], sources: [], cond: null })}
+            onClick={() => setDraft({ q: draft.q, lex: draft.lex, sizes: [], pmin: null, pmax: null, lens: [], colors: [], brands: [], sources: [], cond: null })}
           >
             Reset
           </Button>
