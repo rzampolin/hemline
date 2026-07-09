@@ -26,6 +26,46 @@ export type ApiError = z.infer<typeof ApiErrorSchema>;
 export const ProfilePatchSchema = UserProfileSchema.omit({ id: true }).partial();
 export type ProfilePatch = z.infer<typeof ProfilePatchSchema>;
 
+// ── Bounded profile patch (additive, 2026-07-08, QA P1 #2) ───────────────
+// Same wire shape as ProfilePatchSchema (which stays frozen), with sanity
+// bounds on the numeric fields so PATCH /api/profile rejects junk
+// (heightInches 0/999/−5, negative budgets, min>max) with the standard
+// error envelope instead of silently storing it. The quiz UI ranges
+// (height 4′0″–6′11″, sizes 0–18, budget $10–480) all sit inside these.
+
+/** Sane adult human height, inches (4′0″–7′0″). */
+export const HEIGHT_INCHES_MIN = 48;
+export const HEIGHT_INCHES_MAX = 84;
+/** Normalized US-numeric dress-size domain. */
+export const SIZE_NORMALIZED_MIN = 0;
+export const SIZE_NORMALIZED_MAX = 26;
+/** Heel preference, inches (UI stepper caps at 4″; 8″ is the hard bound). */
+export const HEEL_PREF_INCHES_MAX = 8;
+
+export const BoundedBudgetSchema = z
+  .object({
+    minCents: z.number().int().nonnegative().nullable(),
+    maxCents: z.number().int().nonnegative().nullable(),
+  })
+  .refine((b) => b.minCents == null || b.maxCents == null || b.minCents <= b.maxCents, {
+    message: 'budget.minCents must be ≤ budget.maxCents',
+  });
+
+export const BoundedProfilePatchSchema = ProfilePatchSchema.extend({
+  heightInches: z
+    .number()
+    .min(HEIGHT_INCHES_MIN, `height must be ≥ ${HEIGHT_INCHES_MIN} inches`)
+    .max(HEIGHT_INCHES_MAX, `height must be ≤ ${HEIGHT_INCHES_MAX} inches`)
+    .nullable()
+    .optional(),
+  heelPrefInches: z.number().min(0).max(HEEL_PREF_INCHES_MAX).optional(),
+  sizesNormalized: z
+    .array(z.number().min(SIZE_NORMALIZED_MIN).max(SIZE_NORMALIZED_MAX))
+    .optional(),
+  budget: BoundedBudgetSchema.optional(),
+});
+export type BoundedProfilePatch = z.infer<typeof BoundedProfilePatchSchema>;
+
 // ── PUT /api/profile/brand-sizes ──────────────────────────────────────────
 export const BrandSizesPutSchema = z.array(
   z.object({ brand: z.string(), sizeLabel: z.string() }),
@@ -101,6 +141,18 @@ export const MetaFiltersResponseSchema = z.object({
   priceRange: z.tuple([z.number(), z.number()]),
 });
 export type MetaFiltersResponse = z.infer<typeof MetaFiltersResponseSchema>;
+
+// ── POST /api/clickouts (spec G4 click/attribution log; additive 2026-07-08) ─
+/**
+ * Fired (sendBeacon / fire-and-forget fetch) when the user taps the outbound
+ * "Shop on …" CTA. Guests are tolerated (user id nullable server-side); the
+ * destination URL is stored only as a sha256 hash — no full-URL PII at rest.
+ */
+export const ClickoutPostSchema = z.object({ listingId: z.string().min(1) });
+export type ClickoutPost = z.infer<typeof ClickoutPostSchema>;
+
+export const ClickoutResponseSchema = z.object({ recorded: z.boolean() });
+export type ClickoutResponse = z.infer<typeof ClickoutResponseSchema>;
 
 // ── POST /api/admin/ingest ────────────────────────────────────────────────
 export const AdminIngestRequestSchema = z.object({ sourceId: z.string().optional() });

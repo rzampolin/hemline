@@ -110,6 +110,7 @@ const STATEMENTS = [
     budget_max_cents INTEGER,
     color_season  TEXT,
     palette_json  TEXT NOT NULL DEFAULT '[]',
+    palette_boost_enabled INTEGER,
     style_tags_json TEXT NOT NULL DEFAULT '{}',
     onboarded_at  INTEGER
   )`,
@@ -146,6 +147,16 @@ const STATEMENTS = [
     updated_at  INTEGER NOT NULL,
     UNIQUE (user_id, listing_id, kind)
   )`,
+  `CREATE TABLE IF NOT EXISTS clickouts (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    listing_id       TEXT NOT NULL REFERENCES listings(id),
+    user_id          TEXT,
+    source_id        TEXT NOT NULL,
+    destination_hash TEXT NOT NULL,
+    clicked_at       INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_clickouts_listing ON clickouts(listing_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_clickouts_time ON clickouts(clicked_at)`,
   `CREATE TABLE IF NOT EXISTS extraction_corrections (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     content_hash  TEXT NOT NULL,
@@ -165,6 +176,8 @@ const ADDITIVE_COLUMNS: Array<{ table: string; column: string; ddl: string }> = 
   { table: 'extractions', column: 'length_basis', ddl: `ALTER TABLE extractions ADD COLUMN length_basis TEXT` },
   { table: 'extractions', column: 'length_anchor', ddl: `ALTER TABLE extractions ADD COLUMN length_anchor TEXT` },
   { table: 'extractions', column: 'length_anchor_height_in', ddl: `ALTER TABLE extractions ADD COLUMN length_anchor_height_in REAL` },
+  // Palette-boost toggle (QA P1 #1, 2026-07-08): NULL = enabled.
+  { table: 'users', column: 'palette_boost_enabled', ddl: `ALTER TABLE users ADD COLUMN palette_boost_enabled INTEGER` },
 ];
 
 /** Create all core tables/indexes if absent. Idempotent. */

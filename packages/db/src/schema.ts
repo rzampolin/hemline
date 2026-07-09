@@ -213,6 +213,12 @@ export const users = sqliteTable('users', {
   colorSeason: text('color_season'),
   /** [{hex,name}] derived palette (selfie is DISCARDED) */
   paletteJson: text('palette_json').notNull().default('[]'),
+  /**
+   * Global palette-boost toggle (spec D2; additive 2026-07-08, QA P1 #1).
+   * NULL = never set = enabled (historical behavior); 0 disables the
+   * server-side ranking boost.
+   */
+  paletteBoostEnabled: integer('palette_boost_enabled', { mode: 'boolean' }),
   /** learned sparse vector {tag: weight} from swipes */
   styleTagsJson: text('style_tags_json').notNull().default('{}'),
   onboardedAt: integer('onboarded_at'),
@@ -281,6 +287,33 @@ export const pendingAlerts = sqliteTable(
     updatedAt: integer('updated_at').notNull(),
   },
   (t) => [unique().on(t.userId, t.listingId, t.kind)],
+);
+
+/**
+ * Spec G4 (additive, 2026-07-08 QA P1 #4): affiliate click/attribution log.
+ * One row per outbound "Shop on …" tap. user_id is nullable (guest clickouts
+ * tolerated, no FK so pre-session beacons never fail); the destination URL is
+ * stored only as a sha256 hash — enough for dedupe/sold-detection joins via
+ * listing_id without keeping full-URL PII at rest.
+ */
+export const clickouts = sqliteTable(
+  'clickouts',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    listingId: text('listing_id')
+      .notNull()
+      .references(() => listings.id),
+    /** nullable: guests without a session are recorded anonymously */
+    userId: text('user_id'),
+    sourceId: text('source_id').notNull(),
+    /** sha256(affiliateUrl ?? sourceUrl) — destination fingerprint, no PII */
+    destinationHash: text('destination_hash').notNull(),
+    clickedAt: integer('clicked_at').notNull(),
+  },
+  (t) => [
+    index('idx_clickouts_listing').on(t.listingId),
+    index('idx_clickouts_time').on(t.clickedAt),
+  ],
 );
 
 /** Spec G2: manual extraction-correction log (prompt-tuning audit trail). */

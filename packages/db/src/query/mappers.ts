@@ -101,6 +101,8 @@ export function rowToUserProfile(
     budget: { minCents: row.budgetMinCents ?? null, maxCents: row.budgetMaxCents ?? null },
     colorSeason: (row.colorSeason ?? null) as UserProfile['colorSeason'],
     palette: parseJson(row.paletteJson, []),
+    // NULL (never set) = enabled — the pre-toggle behavior (QA P1 #1).
+    paletteBoostEnabled: row.paletteBoostEnabled ?? true,
     styleTags: parseJson(row.styleTagsJson, {}),
     onboarded: row.onboardedAt != null,
   };

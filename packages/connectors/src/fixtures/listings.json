@@ -11989,5 +11989,84 @@
       },
       "confidence": 0.9
     }
+  },
+  {
+    "raw": {
+      "sourceId": "fixture:shopify",
+      "sourceListingId": "sister-jane-tapestry-jacquard-midi-9901",
+      "sourceUrl": "https://sisterjane.com/products/tapestry-jacquard-midi-dress-9901",
+      "title": "Tapestry Jacquard Midi Dress — Emerald",
+      "description": "QA currency fixture (GBP): jacquard midi in emerald green. A-line silhouette, v-neckline, long sleeves. Length: 44\" from high point of shoulder (size UK 10). Priced in pounds sterling.",
+      "brand": "Sister Jane",
+      "priceCents": 12900,
+      "currency": "GBP",
+      "imageUrls": [
+        "https://placehold.co/600x800?text=Sister+Jane+Tapestry",
+        "https://placehold.co/600x800?text=Sister+Jane+Tapestry+2"
+      ],
+      "sizeLabels": [
+        "UK 6",
+        "UK 8",
+        "UK 10",
+        "UK 12",
+        "UK 14"
+      ],
+      "availability": {
+        "UK 6": true,
+        "UK 8": true,
+        "UK 10": true,
+        "UK 12": true,
+        "UK 14": false
+      },
+      "condition": "new",
+      "isVintage": false,
+      "seenAt": 1783214640000
+    },
+    "sizeNormalized": [
+      2,
+      4,
+      6,
+      8,
+      10
+    ],
+    "lastSeenHoursAgo": 2.5,
+    "firstSeenDaysAgo": 12,
+    "extraction": {
+      "lengthClass": "midi",
+      "lengthInches": 44,
+      "measurements": {
+        "bust": null,
+        "waist": null,
+        "hip": null,
+        "length": 44
+      },
+      "colors": [
+        {
+          "name": "emerald",
+          "family": "green",
+          "hex": "#2E6F40"
+        }
+      ],
+      "fabric": "jacquard",
+      "neckline": "v_neck",
+      "silhouette": "a_line",
+      "sleeve": "long",
+      "pattern": "floral",
+      "occasions": [
+        "work",
+        "date_night"
+      ],
+      "attributeVector": {
+        "length:midi": 1,
+        "silhouette:a_line": 1,
+        "color:green": 0.8,
+        "pattern:floral": 0.7,
+        "neckline:v_neck": 0.5,
+        "fabric:jacquard": 0.6,
+        "occasion:work": 0.4,
+        "occasion:date_night": 0.4
+      },
+      "confidence": 0.9
+    }
   }
 ]

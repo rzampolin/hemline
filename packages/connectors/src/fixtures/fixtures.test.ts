@@ -9,8 +9,14 @@ import { loadFixtureEntries } from './index';
 describe('fixture listings', () => {
   const entries = loadFixtureEntries();
 
-  it('contains 150 listings', () => {
-    expect(entries).toHaveLength(150);
+  it('contains 151 listings', () => {
+    // 150 original + 1 GBP-priced entry (QA P1 #3: currency handling must be
+    // exercised by the zero-key corpus — display £, filter in USD-equivalent)
+    expect(entries).toHaveLength(151);
+  });
+
+  it('includes a non-USD (GBP) listing so currency handling stays exercised', () => {
+    expect(entries.some((e) => e.raw.currency === 'GBP')).toBe(true);
   });
 
   it('every raw listing satisfies RawListingSchema', () => {

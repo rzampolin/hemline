@@ -19,6 +19,11 @@ export type HemPosition = z.infer<typeof HemPositionSchema>;
 
 export const HardFiltersSchema = z.object({
   sizesNormalized: z.array(z.number()).optional(),
+  /**
+   * Budget bounds are USD cents (spec §3: budgets are USD-only). Listings in
+   * other currencies are compared via their static-FX USD equivalent
+   * (contracts/fx.ts, 2026-07-08) — display stays native-currency.
+   */
   priceMinCents: z.number().int().nonnegative().optional(),
   priceMaxCents: z.number().int().nonnegative().optional(),
   /** "I want dresses that hit knee/midi ON ME" */

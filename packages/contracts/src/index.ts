@@ -9,3 +9,4 @@ export * from './matching';
 export * from './profile';
 export * from './color';
 export * from './api';
+export * from './fx';

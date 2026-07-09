@@ -47,6 +47,13 @@ export const UserProfileSchema = z.object({
   }),
   colorSeason: ColorSeasonSchema.nullable(),
   palette: z.array(PaletteColorSchema),
+  /**
+   * Global "boost my palette in the feed" toggle (spec D2) — additive,
+   * 2026-07-08 (QA P1 #1). Absent/undefined ⇒ enabled (the historical
+   * behavior). `false` disables the server-side palette ranking boost;
+   * it NEVER filters — the result set is identical either way.
+   */
+  paletteBoostEnabled: z.boolean().optional(),
   /** learned from swipes */
   styleTags: z.record(z.string(), z.number()),
   onboarded: z.boolean(),

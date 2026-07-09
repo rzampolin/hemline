@@ -10,5 +10,6 @@ export * from './swipes';
 export * from './saves';
 export * from './alerts';
 export * from './admin';
+export * from './clickouts';
 export * from './ai-cache';
 export * from './embeddings';

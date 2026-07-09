@@ -55,6 +55,7 @@ export function patchUserProfile(db: Db, userId: string, patch: ProfilePatch): U
   }
   if (patch.colorSeason !== undefined) set.colorSeason = patch.colorSeason;
   if (patch.palette !== undefined) set.paletteJson = JSON.stringify(patch.palette);
+  if (patch.paletteBoostEnabled !== undefined) set.paletteBoostEnabled = patch.paletteBoostEnabled;
   if (patch.styleTags !== undefined) set.styleTagsJson = JSON.stringify(patch.styleTags);
   if (patch.onboarded !== undefined) set.onboardedAt = patch.onboarded ? Date.now() : null;
 

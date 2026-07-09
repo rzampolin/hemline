@@ -6,8 +6,8 @@
  * Hem-position ("effective length ON HER") is per-user math and cannot be a
  * SQL predicate — callers apply it over the capped candidate set in TS.
  */
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
-import type { Listing } from '@hemline/contracts';
+import { and, asc, desc, eq, gte, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { FX_TO_USD, type Listing } from '@hemline/contracts';
 import type { Db } from '../client';
 import { extractions, listingImages, listings, sources } from '../schema';
 import { parseJson, rowToListing, type ExtractionRow, type ListingRow } from './mappers';
@@ -84,6 +84,23 @@ function inListSql(values: (string | number)[]): SQL {
 }
 
 /**
+ * USD-cent-equivalent price expression (QA P1 #3, 2026-07-08): budgets are
+ * USD (spec §3), but GBP/EUR sources store native cents/pence in price_cents.
+ * Computed at query time from the static contracts/fx.ts table — no extra
+ * column to backfill, and the catalog scale (≤10k rows post-filter) makes the
+ * CASE negligible. Display stays native-currency (packages/ui formatPrice).
+ */
+function priceUsdCentsSql(): SQL {
+  const cases = Object.entries(FX_TO_USD)
+    .filter(([code, rate]) => code !== 'USD' && rate !== 1)
+    .map(
+      ([code, rate]) =>
+        sql` WHEN ${code} THEN CAST(round(${listings.priceCents} * ${rate}) AS INTEGER)`,
+    );
+  return sql`(CASE ${listings.currency}${sql.join(cases, sql``)} ELSE ${listings.priceCents} END)`;
+}
+
+/**
  * SQL hard filters → capped candidate set, newest-first.
  * size ∩ price ∩ condition ∩ brand ∩ color family ∩ source ∩ text query ∩ freshness.
  */
@@ -100,8 +117,9 @@ export function queryCandidates(db: Db, opts: CandidateQueryOptions = {}): Candi
       sql`(json_array_length(${listings.sizeNormalizedJson}) = 0 OR EXISTS (SELECT 1 FROM json_each(${listings.sizeNormalizedJson}) je WHERE je.value IN (${inListSql(opts.sizesNormalized)})))`,
     );
   }
-  if (opts.priceMinCents != null) conds.push(gte(listings.priceCents, opts.priceMinCents) as SQL);
-  if (opts.priceMaxCents != null) conds.push(lte(listings.priceCents, opts.priceMaxCents) as SQL);
+  // budget bounds are USD cents; compare against the FX-normalized price
+  if (opts.priceMinCents != null) conds.push(sql`${priceUsdCentsSql()} >= ${opts.priceMinCents}`);
+  if (opts.priceMaxCents != null) conds.push(sql`${priceUsdCentsSql()} <= ${opts.priceMaxCents}`);
   if (opts.conditions && opts.conditions.length > 0)
     conds.push(inArray(listings.condition, opts.conditions) as SQL);
   if (opts.brands && opts.brands.length > 0) {
@@ -230,10 +248,11 @@ export function metaFilters(db: Db): {
     json_each(e.colors_json) jc
     WHERE json_extract(jc.value, '$.family') IS NOT NULL
   `);
+  // price facet is USD-cent-equivalent (matches the USD budget slider)
   const price = db
     .select({
-      min: sql<number | null>`min(${listings.priceCents})`,
-      max: sql<number | null>`max(${listings.priceCents})`,
+      min: sql<number | null>`min(${priceUsdCentsSql()})`,
+      max: sql<number | null>`max(${priceUsdCentsSql()})`,
     })
     .from(listings)
     .where(isNull(listings.removedAt))
