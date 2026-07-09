@@ -88,6 +88,18 @@ RUN .venv/bin/python embed.py warmup \
 # regression must fail HERE, not on the first machine restart)
 RUN HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 .venv/bin/python embed.py warmup
 
+# ── litestream: fetch + verify the backup binary in its own stage ───────────
+# Official release tarball, arch-matched via BuildKit's TARGETARCH so the same
+# Dockerfile builds on Fly's amd64 builders and local Apple Silicon. Separate
+# stage so the runner gets ONLY the extracted binary (no dead tarball layer);
+# `litestream version` gates a bad download/extract at BUILD time.
+FROM ${NODE_IMAGE} AS litestream
+ARG TARGETARCH
+ARG LITESTREAM_VERSION=0.5.14
+ADD https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-${TARGETARCH}.tar.gz /tmp/litestream.tar.gz
+RUN tar -xzf /tmp/litestream.tar.gz -C /usr/local/bin litestream \
+ && litestream version
+
 # ── runtime: standalone server + bundles + supervisor + ml sidecar ──────────
 FROM ${NODE_IMAGE} AS runner
 ENV NODE_ENV=production \
@@ -113,6 +125,12 @@ WORKDIR /app
 RUN apt-get update \
  && apt-get install -y --no-install-recommends python3 ca-certificates \
  && rm -rf /var/lib/apt/lists/*
+
+# litestream: continuous SQLite backup to S3-compatible storage (Tigris in
+# prod). The supervisor only spawns it when the S3 secrets are present
+# (start.mjs), so the ~36MB binary is inert in secretless local runs.
+COPY --from=litestream /usr/local/bin/litestream /usr/local/bin/litestream
+COPY docker/litestream.yml /etc/litestream.yml
 
 # ~2GB layer (torch venv + weights) — kept early so app-only rebuilds reuse it.
 # node-owned: embed.py writes its image-download cache to /app/ml/.cache.

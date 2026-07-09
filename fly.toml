@@ -26,7 +26,9 @@ primary_region = "ewr" # pick the region closest to the founder; volume is creat
 [mounts]
   source = "hemline_data"
   destination = "/data"
-  # daily Fly-managed volume snapshots, kept 5 days — the beta backup story
+  # daily Fly-managed volume snapshots, kept 5 days — the coarse fallback
+  # behind the primary backup: Litestream streams the db to Tigris whenever
+  # the S3 secrets are set (fly storage create; DEPLOY.md "Backups & restore")
   snapshot_retention = 5
 
 [http_service]

@@ -37,7 +37,8 @@ fly volumes create hemline_data --region ewr --size 3
 
 3GB is plenty (the db is ~12MB today; images are hotlinked, never stored).
 Volume cost: 3GB × $0.15 = **$0.45/mo**. Fly takes daily snapshots
-(kept 5 days per `fly.toml`) — that's the beta backup story.
+(kept 5 days per `fly.toml`); the primary backup is Litestream streaming
+replication to Tigris — enable it with one `fly storage create` (section 10).
 
 ## 3. Set secrets
 
@@ -177,12 +178,93 @@ fly ssh console -C "node -e 'console.log(process.env.DATABASE_PATH)'"
 Config changes (`fly.toml [env]`) take effect on the next `fly deploy`;
 secrets via `fly secrets set` restart the machine immediately.
 
+## 10. Backups & restore (Litestream → Tigris)
+
+The container ships Litestream (v0.5.14, `/usr/local/bin/litestream`, config
+at `/etc/litestream.yml`). When the Tigris secrets are present the supervisor
+runs `litestream replicate` as a third child that continuously streams the
+SQLite WAL to object storage: **10s sync interval** (max ~10s of writes lost
+in a crash), **6h full snapshots**, **72h point-in-time retention**. Fly's
+daily volume snapshots (5 kept) remain underneath as the coarse fallback.
+Without the secrets nothing changes — one `[start] litestream backup off`
+log line and the app runs exactly as before.
+
+### Enable (one-time)
+
+```bash
+fly storage create        # name it e.g. hemline-litestream
+```
+
+That provisions a Tigris bucket and sets the app secrets
+`BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+`AWS_ENDPOINT_URL_S3` (+ `AWS_REGION`), restarting the machine. Done — no
+other flags or config. Verify:
+
+```bash
+fly logs | grep litestream     # replication activity, no error lines
+fly ssh console -C "litestream databases -config /etc/litestream.yml"
+```
+
+(If the image predates Litestream, `fly deploy` first.)
+
+### RESTORE runbook
+
+Mirrors the sftp-upload style: **restore to a temp path → verify → swap →
+restart**. Point-in-time: add `-timestamp "2026-07-09T12:00:00Z"` (any moment
+in the last 72h) to the restore command.
+
+**Scenario A — bad migration / bad data, volume intact.**
+
+```bash
+fly ssh console
+# 1. restore the latest replica to a TEMP path (never straight over the live db)
+litestream restore -config /etc/litestream.yml \
+  -integrity-check full -o /data/hemline-restore.db /data/hemline.db
+# 2. verify counts look right (compare with /api/health before the incident)
+node -e "const db=require('/app/node_modules/better-sqlite3')('/data/hemline-restore.db',{readonly:true});
+for (const t of ['listings','listing_embeddings','users'])
+  console.log(t, db.prepare('select count(*) c from '+t).get().c);
+console.log(db.pragma('integrity_check'));"
+# 3. swap (stale WAL/SHM of the old file must go with it)
+mv /data/hemline-restore.db /data/hemline.db
+rm -f /data/hemline.db-wal /data/hemline.db-shm
+exit
+fly apps restart hemline       # clean handles on the restored file
+```
+
+**Scenario B — volume lost/destroyed.**
+
+> **Footgun:** an empty volume + live replication would immediately start
+> backing up the *empty* db. Always disable the backup child **before**
+> booting on a fresh volume, restore, then re-enable.
+
+```bash
+fly secrets set LITESTREAM_REPLICATE=off      # restarts the machine
+fly volumes create hemline_data --region ewr --size 3
+# attach: destroy the dead machine / fly deploy so the new volume mounts
+fly ssh console
+litestream restore -config /etc/litestream.yml \
+  -integrity-check full -o /data/hemline-restore.db /data/hemline.db
+# verify counts as in scenario A, then:
+mv /data/hemline-restore.db /data/hemline.db
+rm -f /data/hemline.db-wal /data/hemline.db-shm
+exit
+fly secrets unset LITESTREAM_REPLICATE        # restarts; replication resumes
+curl -s https://hemline.fly.dev/api/health | python3 -m json.tool
+```
+
+**Restore drill:** run Scenario A's steps 1–2 (restore + verify, no swap)
+after enabling, and every month or two — a backup you've never restored
+doesn't exist. Older than 72h? Fall back to Fly volume snapshots
+(`fly volumes snapshots list`, step 9).
+
 ## Cost expectations (2026-07 Fly pricing)
 
 | Item | Monthly |
 |---|---|
 | shared-cpu-1x / 4GB, always on (scheduler + resident ML model) | $22.22 |
 | Volume 3GB × $0.15 | $0.45 |
+| Tigris (Litestream replica, ~150MB + tiny request volume) | ~$0 |
 | Egress (beta traffic, NA/EU $0.02/GB) | ~$0–1 |
 | **Fly total** | **~$23–24/mo** |
 | Anthropic API (capped by `AI_DAILY_BUDGET_USD=5`) | $0–150 worst case; realistically **$1–10/mo** (extraction is cached by content hash; re-rank is cached 24h) |
@@ -212,5 +294,5 @@ image (slower deploys — the ML layer is cached after the first), the 4GB VM
 at $22.22/mo instead of 2GB at $10.70, and ~1.3GB of RSS for the resident
 model — measured peak under load was 1.75GB, well within the 4GB VM.
 
-Backup follow-up: Litestream streaming replication — scaffold in
-`docker/litestream.yml`.
+Backups: Litestream streaming replication to Tigris ships in the image —
+section 10 above (`docker/litestream.yml`, decisions doc §7).

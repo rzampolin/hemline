@@ -195,7 +195,8 @@ Full transcript in the EM report.
   **Litestream evaluated:** worth it eventually (point-in-time restore,
   off-Fly copy) but it adds a binary, a bucket, credentials, and a restore
   drill to the beta cutline — scaffolding committed at `docker/litestream.yml`
-  with exact enable steps, wiring deferred.
+  with exact enable steps, wiring deferred. *(Superseded by §7 — wired
+  2026-07-09.)*
 
 ## 5. Hardening
 
@@ -233,3 +234,71 @@ Full transcript in the EM report.
    aborts startup, `dist/seed.mjs` populates an empty volume, one-shot
    `dist/ingest-run.mjs --source=fixtures` runs, embed step skips with
    `no_sidecar` (ML-absent path clean).
+
+## 7. Litestream continuous backup — wired (2026-07-09)
+
+The db now embodies ~$60 of AI extraction plus a day of crawling; "restore
+yesterday's Fly snapshot" stopped being an acceptable worst case. The §4
+scaffold is now live: Litestream **v0.5.14** ships in the image
+(`/usr/local/bin/litestream`, official release tarball, arch-matched via
+BuildKit `TARGETARCH` — same Dockerfile on Fly's amd64 builders and local
+Apple Silicon; `litestream version` gates the download at build time) with
+config baked at `/etc/litestream.yml`.
+
+**Storage: Fly Tigris** (S3-compatible), provisioned by one founder-run
+`fly storage create`, which sets the app secrets Litestream consumes —
+`BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+`AWS_ENDPOINT_URL_S3` (names verified against Fly's Tigris docs and the
+Litestream Tigris guide, fetched 2026-07-09). The config references them via
+Litestream's `${VAR}` expansion; nothing secret lives in the repo or image.
+Litestream v0.5 auto-detects the Tigris endpoint (signed payloads, no MD5)
+and defaults to path-style whenever an explicit endpoint is set — which is
+exactly why the identical config also works against the local MinIO
+verification rig.
+
+**Sidecar, not `-exec`.** Litestream runs as a third supervised child in
+`docker/start.mjs` (`litestream replicate -config /etc/litestream.yml`),
+replicating the live db over its own read-only SQLite handle — safe by
+design with WAL. The alternative — wrapping the app in
+`litestream replicate -exec "node docker/start.mjs"` — was rejected: it
+inverts process ownership (litestream becomes PID 1 and the supervisor of
+our supervisor), gives us its one-size exit policy instead of ours
+(web-fatal / scheduler-retry, §1), and couples storefront lifecycle to the
+backup tool. `-exec` earns its keep when it must gate app start on
+`restore -if-db-not-exists`; we deliberately keep restore manual (below).
+
+**Failure/skip policy mirrors the scheduler:** death → restart with 5s→5min
+capped backoff — a broken backup pipe must never take the storefront down
+(Fly volume snapshots still exist underneath). When any of the four env vars
+is missing, the supervisor logs one info line naming the missing vars and
+runs without the child — local docker and dev behavior is byte-for-byte
+unchanged. `LITESTREAM_REPLICATE=off` force-disables it; that switch exists
+for the volume-loss restore drill, where booting an EMPTY volume with
+replication live would immediately start backing up the empty db over the
+good replica (the footgun is called out in DEPLOY.md's runbook).
+
+**Settings** (`docker/litestream.yml`): `sync-interval: 10s` — caps the
+crash data-loss window at ~10s; writes are bursty (daily crawls, sporadic
+user actions), so steady-state PUT volume is trivial and 10s costs nothing
+over 60s while being 6× tighter. `snapshot: interval 6h, retention 72h` —
+point-in-time restore reaches back 3 days at ~12 snapshots × ~12MB ≈ 150MB
+of bucket (~free on Tigris); anything older falls back to Fly's daily
+volume snapshots (5 kept), so the combined worst case stays "yesterday" only
+beyond 72h. Defaults kept for everything else (1s monitor, 1m checkpoint).
+
+**Restore is manual and runbook'd** (DEPLOY.md §10): restore to a temp path
+with `-integrity-check full`, verify table counts via a better-sqlite3
+one-liner (the image has no sqlite3 CLI; node + the standalone node_modules
+are already there), `mv` over the live path, drop stale `-wal`/`-shm`,
+restart. Two disaster scenarios documented: bad migration (volume intact)
+and volume loss (disable replication first — see footgun above). No
+auto-restore-on-boot: an intentionally fresh volume (new region, demo seed)
+must stay possible without the backup resurrecting old data.
+
+**Verified locally (transcript in the EM report):** image built on arm64;
+container ran a COPY of the founder's db with a MinIO container as the S3
+target; supervisor started the litestream child (and skipped it with one
+log line when secrets were absent); writes to the db appeared in the bucket
+within the sync interval; container hard-killed; `litestream restore` onto a
+fresh path passed `integrity_check` with row counts identical to the
+pre-kill db. Image size delta: ~+28MB (the litestream binary + config).
