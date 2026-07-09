@@ -46,9 +46,11 @@ RUN ESB="node_modules/.bin/esbuild --bundle --platform=node --format=esm --targe
  && eval "$ESB docker/entry-scheduler.ts   --outfile=dist/impl/ingest-scheduler.impl.mjs" \
  && eval "$ESB apps/ingest/src/run.ts      --outfile=dist/impl/ingest-run.impl.mjs" \
  && eval "$ESB scripts/prod-seed.ts        --outfile=dist/impl/seed.impl.mjs" \
+ && eval "$ESB scripts/fix-brands.ts       --outfile=dist/impl/fix-brands.impl.mjs" \
  && printf 'import "./impl/ingest-scheduler.impl.mjs";\n' > dist/ingest-scheduler.mjs \
  && printf 'import "./impl/ingest-run.impl.mjs";\n'       > dist/ingest-run.mjs \
- && printf 'import "./impl/seed.impl.mjs";\n'             > dist/seed.mjs
+ && printf 'import "./impl/seed.impl.mjs";\n'             > dist/seed.mjs \
+ && printf 'import "./impl/fix-brands.impl.mjs";\n'       > dist/fix-brands.mjs
 
 # ── ml: FashionSigLIP venv + weights, baked at BUILD time ───────────────────
 # Same Debian base as the runtime so the venv's /usr/bin/python3.11 symlinks
