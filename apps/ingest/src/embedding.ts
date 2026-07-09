@@ -74,6 +74,11 @@ export async function embedMissingForSources(
       prefixes.some((p) => t.listingId.startsWith(p)) && !isPlaceholderImage(t.imageUrl),
   );
   if (tasks.length === 0) {
+    // observable in prod logs: the step RAN and found nothing to embed (e.g.
+    // the fixture corpus — placeholder-host images are excluded by design)
+    logger.info(
+      '[embed] embed-on-ingest: no listings missing vectors for this run (placeholder images excluded by design)',
+    );
     return { queued: 0, embedded: 0, failed: 0, skipped: 'nothing_missing' };
   }
 

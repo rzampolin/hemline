@@ -7,7 +7,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { EmbedderProcess, isEmbedderAvailable, resolveEmbedder } from './embedder';
+import {
+  EmbedderProcess,
+  isEmbedderAvailable,
+  resolveEmbedder,
+  sidecarStatus,
+  warmSharedEmbedder,
+} from './embedder';
 
 // CJS on purpose: the tmp dir has no package.json, so Node treats the .py file as CJS.
 const STUB = `
@@ -133,5 +139,67 @@ describe('embed.py IO contract (mocked sidecar)', () => {
     });
     procs.push(hanging);
     await expect(hanging.embed({ imageUrl: 'https://img/slow.jpg' })).rejects.toThrow(/timed out/);
+  });
+});
+
+describe('readiness + sidecarStatus (eager prod warmup contract)', () => {
+  const g = globalThis as unknown as Record<symbol, unknown>;
+  const STATE = Symbol.for('hemline.ml.state');
+  const SHARED = Symbol.for('hemline.ml.embedder');
+
+  afterEach(() => {
+    g[STATE] = undefined;
+    g[SHARED] = undefined;
+  });
+
+  it('whenReady resolves on the ready line and `ready` flips true', async () => {
+    const proc = spawnStub();
+    await proc.whenReady;
+    expect(proc.ready).toBe(true);
+  });
+
+  it('whenReady rejects when the child dies before ever becoming ready', async () => {
+    const deadScript = path.join(mlDir, 'dead.py');
+    fs.writeFileSync(deadScript, 'process.exit(3);');
+    const proc = new EmbedderProcess({
+      paths: { ...stubPaths(), script: deadScript },
+      batchSize: 1,
+    });
+    procs.push(proc);
+    await expect(proc.whenReady).rejects.toThrow(/exited/);
+    expect(proc.ready).toBe(false);
+  });
+
+  it('sidecarStatus: unavailable without files, cold when spawnable-but-unspawned', () => {
+    delete process.env.HEMLINE_ML_DIR;
+    process.env.HEMLINE_ML_PYTHON = path.join(mlDir, 'no-such-python');
+    expect(sidecarStatus(os.tmpdir())).toEqual({ available: false, state: 'unavailable' });
+
+    process.env.HEMLINE_ML_DIR = mlDir;
+    process.env.HEMLINE_ML_PYTHON = process.execPath;
+    expect(sidecarStatus(os.tmpdir())).toEqual({ available: true, state: 'cold' });
+  });
+
+  it('warmSharedEmbedder loads the model and flips sidecarStatus to ready', async () => {
+    process.env.HEMLINE_ML_DIR = mlDir;
+    process.env.HEMLINE_ML_PYTHON = process.execPath;
+    await expect(warmSharedEmbedder()).resolves.toBe(true);
+    expect(sidecarStatus(os.tmpdir())).toEqual({ available: true, state: 'ready' });
+    await (g[SHARED] as EmbedderProcess).dispose();
+  });
+
+  it('warmSharedEmbedder is false (and state failed) when the child dies during load', async () => {
+    const deadScript = path.join(mlDir, 'dead.py');
+    fs.writeFileSync(deadScript, 'process.exit(3);');
+    const deadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hemline-ml-dead-'));
+    fs.copyFileSync(deadScript, path.join(deadDir, 'embed.py'));
+    process.env.HEMLINE_ML_DIR = deadDir;
+    process.env.HEMLINE_ML_PYTHON = process.execPath;
+    try {
+      await expect(warmSharedEmbedder()).resolves.toBe(false);
+      expect(sidecarStatus(os.tmpdir())).toEqual({ available: false, state: 'failed' });
+    } finally {
+      fs.rmSync(deadDir, { recursive: true, force: true });
+    }
   });
 });

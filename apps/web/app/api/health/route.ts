@@ -6,15 +6,18 @@
  *  - db: reachable + listing/vector counts (a fresh empty volume is healthy —
  *    getDb() runs ensureSchema, so a brand-new file still answers `ok`)
  *  - lastIngest: most recent ingest_runs row + age (null before first run)
- *  - ml: whether the FashionSigLIP sidecar could be spawned in THIS container
- *    (false in the default prod image — visual probe search degrades to the
- *    attribute path; stored vectors still power ranking; by design, see
- *    docs/decisions-deploy.md)
+ *  - ml: honest sidecar readiness in THIS container. The prod image bakes the
+ *    FashionSigLIP venv + weights and eager-loads at boot (HEMLINE_ML_EAGER=1,
+ *    docs/decisions-deploy.md): `state` walks warming → ready and
+ *    `sidecarAvailable` flips true when the model is actually resident.
+ *    Local dev without `npm run ml:setup` reports unavailable/false — visual
+ *    probe search degrades to the attribute path; stored vectors still power
+ *    ranking either way.
  */
 import { desc, isNull, sql } from 'drizzle-orm';
 import { EMBEDDING_MODEL_TAG } from '@hemline/contracts';
 import { embeddingStats, ingestRuns, listings } from '@hemline/db';
-import { isEmbedderAvailable } from '@hemline/matching/embedder';
+import { sidecarStatus } from '@hemline/matching/embedder';
 import { getDb } from '../lib/db';
 import { fail, ok } from '../lib/envelope';
 
@@ -45,6 +48,7 @@ export async function GET() {
       .get();
 
     const vectors = embeddingStats(db, EMBEDDING_MODEL_TAG);
+    const ml = sidecarStatus();
     const now = Date.now();
 
     return ok({
@@ -58,7 +62,7 @@ export async function GET() {
             ageSeconds: Math.round((now - lastRun.startedAt) / 1000),
           }
         : null,
-      ml: { sidecarAvailable: isEmbedderAvailable() },
+      ml: { sidecarAvailable: ml.available, state: ml.state },
       uptimeSeconds: Math.round(process.uptime()),
     });
   } catch (err) {

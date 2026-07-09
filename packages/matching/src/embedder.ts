@@ -78,11 +78,26 @@ export class EmbedderProcess {
   private nextId = 0;
   private exited: Error | null = null;
   private readonly timeoutMs: number;
+  private isReady = false;
+  private readyResolve!: () => void;
+  private readyReject!: (e: Error) => void;
+  /**
+   * Settles once embed.py has loaded the model and emitted its `ready` line
+   * (5–20s cold), or rejects if the child dies first. Awaiting this is how
+   * eager boot warmup (instrumentation) knows the model is resident.
+   */
+  readonly whenReady: Promise<void>;
 
   constructor(opts: EmbedderOptions = {}) {
     const paths = opts.paths ?? resolveEmbedder();
     if (!paths) throw new Error('ml sidecar not set up — run `npm run ml:setup`');
     this.timeoutMs = opts.timeoutMs ?? 90_000;
+    this.whenReady = new Promise<void>((resolve, reject) => {
+      this.readyResolve = resolve;
+      this.readyReject = reject;
+    });
+    // readiness is optional to observe — never surface an unhandled rejection
+    this.whenReady.catch(() => {});
     this.child = spawn(
       paths.python,
       [paths.script, 'batch', '--batch-size', String(opts.batchSize ?? 1)],
@@ -100,6 +115,11 @@ export class EmbedderProcess {
 
   get alive(): boolean {
     return this.exited == null;
+  }
+
+  /** True once the sidecar reported the model loaded (`ready` line seen). */
+  get ready(): boolean {
+    return this.isReady;
   }
 
   /** Embed one image or text; rejects on sidecar error/timeout/exit. */
@@ -145,7 +165,12 @@ export class EmbedderProcess {
     } catch {
       return; // non-protocol noise on stdout — ignore
     }
-    if (msg.ready || msg.id == null) return;
+    if (msg.ready) {
+      this.isReady = true;
+      this.readyResolve();
+      return;
+    }
+    if (msg.id == null) return;
     if (msg.vector) this.settle(msg.id, Float32Array.from(msg.vector));
     else this.settle(msg.id, undefined, new Error(msg.error ?? 'embed failed'));
   }
@@ -162,6 +187,7 @@ export class EmbedderProcess {
   private onExit(err: Error): void {
     if (this.exited) return;
     this.exited = err;
+    this.readyReject(err); // no-op if already resolved
     for (const [id] of this.pending) this.settle(id, undefined, err);
   }
 }
@@ -169,6 +195,36 @@ export class EmbedderProcess {
 // ── shared interactive embedder (web routes) ───────────────────────────────
 
 const SHARED_KEY = Symbol.for('hemline.ml.embedder');
+const STATE_KEY = Symbol.for('hemline.ml.state');
+
+/**
+ * Lifecycle of the SHARED sidecar child (the one behind find-similar and
+ * /api/health), reported honestly instead of "the venv files exist":
+ *   unavailable — no venv/script; every embed falls back to attributes
+ *   cold        — spawnable, not spawned yet (lazy local dev; first request
+ *                 will eat the 5–20s model load)
+ *   warming     — child spawned, model loading (eager boot or first request)
+ *   ready       — model resident; embeds answer in O(100ms)
+ *   failed      — child died before ever becoming ready (OOM, broken weights)
+ */
+export type SidecarState = 'unavailable' | 'cold' | 'warming' | 'ready' | 'failed';
+
+function setSharedState(state: 'warming' | 'ready' | 'failed'): void {
+  (globalThis as unknown as Record<symbol, SidecarState | undefined>)[STATE_KEY] = state;
+}
+
+/**
+ * Honest availability for /api/health: `available` means "a probe embed
+ * issued now will be served by the sidecar" — true when the model is resident
+ * (`ready`) or a lazy spawn would work (`cold`), false while an eager boot
+ * warmup is still loading (`warming`) or after a fatal load (`failed`).
+ */
+export function sidecarStatus(startDir?: string): { available: boolean; state: SidecarState } {
+  if (!isEmbedderAvailable(startDir)) return { available: false, state: 'unavailable' };
+  const state =
+    (globalThis as unknown as Record<symbol, SidecarState | undefined>)[STATE_KEY] ?? 'cold';
+  return { available: state === 'ready' || state === 'cold', state };
+}
 
 /**
  * Lazily-spawned shared child for interactive requests (find-similar). Kept on
@@ -183,9 +239,33 @@ export function getSharedEmbedder(opts: Omit<EmbedderOptions, 'batchSize'> = {})
   try {
     const proc = new EmbedderProcess({ ...opts, batchSize: 1 });
     g[SHARED_KEY] = proc;
+    setSharedState('warming');
+    proc.whenReady.then(
+      () => setSharedState('ready'),
+      () => setSharedState('failed'),
+    );
     return proc;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Eager boot warmup: spawn the shared child and wait for the model to be
+ * resident. Called (fire-and-forget) from apps/web/instrumentation.ts when
+ * HEMLINE_ML_EAGER=1 — the production container sets it so the first user's
+ * find-similar never pays the model load, and a broken sidecar surfaces in
+ * the deploy logs instead of at first request. Resolves false when the
+ * sidecar is absent or the load failed (the app keeps running either way).
+ */
+export async function warmSharedEmbedder(): Promise<boolean> {
+  const embedder = getSharedEmbedder();
+  if (!embedder) return false;
+  try {
+    await embedder.whenReady;
+    return true;
+  } catch {
+    return false;
   }
 }
 

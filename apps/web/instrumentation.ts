@@ -35,4 +35,36 @@ export async function register(): Promise<void> {
         'Set it: fly secrets set ADMIN_BASIC_AUTH="user:pass"',
     );
   }
+
+  // ── eager ML sidecar warmup (the prod container sets HEMLINE_ML_EAGER=1) ──
+  // Fire-and-forget: the server accepts traffic immediately; /api/health
+  // reports ml.state warming → ready and ml.sidecarAvailable flips true when
+  // the model is resident. find-similar requests issued during the load queue
+  // behind it (90s bridge timeout covers it) or fall back to attributes on
+  // failure. Never enabled in dev — a 5–20s torch load per restart would be rude.
+  if (process.env.HEMLINE_ML_EAGER === '1') {
+    const { isEmbedderAvailable, warmSharedEmbedder } = await import(
+      '@hemline/matching/embedder'
+    );
+    if (!isEmbedderAvailable()) {
+      console.warn(
+        '[startup] HEMLINE_ML_EAGER=1 but the ml sidecar is not installed — ' +
+          'visual probe search will use the attribute fallback',
+      );
+    } else {
+      const t0 = Date.now();
+      console.log(
+        '[startup] warming FashionSigLIP sidecar (5-20s model load; /api/health ml.state flips to "ready")',
+      );
+      void warmSharedEmbedder().then((ready) => {
+        const secs = ((Date.now() - t0) / 1000).toFixed(1);
+        if (ready) console.log(`[startup] ml sidecar ready in ${secs}s`);
+        else
+          console.error(
+            `[startup] ml sidecar warmup FAILED after ${secs}s — probe embedding disabled, ` +
+              'attribute fallback active (set HEMLINE_ML_DEBUG=1 for embed.py stderr)',
+          );
+      });
+    }
+  }
 }
