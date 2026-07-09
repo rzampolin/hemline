@@ -1,7 +1,9 @@
 # Deploying Hemline to Fly.io
 
-One machine, one volume, one container running both the web server and the
-ingest cron scheduler. Design rationale in `docs/decisions-deploy.md`.
+One machine, one volume, one container running the web server, the ingest
+cron scheduler, **and the FashionSigLIP ML sidecar** (baked into the image —
+photo/text visual search and embed-on-ingest run in production). Design
+rationale in `docs/decisions-deploy.md`.
 
 **The database ships, not seeds:** production gets your local
 `data/hemline.db` (the extracted listings + their FashionSigLIP vectors)
@@ -23,7 +25,7 @@ fly launch --no-deploy --copy-config --name hemline
 ```
 
 `--copy-config` keeps the committed `fly.toml` (volume mount, health check,
-2GB VM, `auto_stop_machines = "off"`). If the name `hemline` is taken, pick
+4GB VM, `auto_stop_machines = "off"`). If the name `hemline` is taken, pick
 another — everything else stays the same. If you change `primary_region`,
 change it before creating the volume (volumes are region-pinned).
 
@@ -66,7 +68,11 @@ fly deploy
 ```
 
 Builds the Dockerfile on Fly's builders, starts one machine, waits for the
-`/api/health` check. The app is now up **with an empty database** — the
+`/api/health` check. **The first build takes a while (10-25 min)**: the image
+bakes the CPU-only torch stack plus the ~860MB FashionSigLIP checkpoint
+(downloaded once at build time so boot never touches the network), and the
+resulting multi-GB image has to be pushed to Fly's registry. Later deploys
+reuse the cached ML layer and are much faster — only your app layers rebuild. The app is now up **with an empty database** — the
 landing page works and the feed shows a clear empty state.
 
 **Keep it at exactly one machine.** If Fly created two for redundancy:
@@ -103,9 +109,14 @@ fly apps restart hemline   # picks up the new file with a clean handle
 curl -s https://hemline.fly.dev/api/health | python3 -m json.tool
 ```
 
-Expect `"listingCount"` ≈ 1600+, `"vectorCount"` ≈ 1600+,
-`"ml": {"sidecarAvailable": false}` (correct — see the ML note below), and
-open https://hemline.fly.dev in a phone-sized viewport.
+Expect `"listingCount"` ≈ 1600+, `"vectorCount"` ≈ 1600+, and
+`"ml": {"sidecarAvailable": true, "state": "ready"}`. The model eager-loads at
+boot (5-20s): right after a deploy you may briefly see
+`{"sidecarAvailable": false, "state": "warming"}` — poll again; if it ever
+says `"failed"`, check `fly logs` for the `[startup] ml sidecar` lines.
+Then open https://hemline.fly.dev in a phone-sized viewport, and try a photo
+in "find dresses like this" — the response should say
+`"matchBasis": "embedding"`.
 
 Admin health (uses your basic-auth secret):
 
@@ -132,9 +143,12 @@ fly ssh console -C "node /app/dist/ingest-run.mjs"
 One store: `fly ssh console -C "node /app/dist/ingest-run.mjs --source=shopify:staud.clothing"`.
 Or trigger through the API: `curl -X POST -u "admin:<password>" https://hemline.fly.dev/api/admin/ingest`.
 
-New/changed listings get Haiku extraction (within `AI_DAILY_BUDGET_USD`);
-the embed step logs one "ml not set up — skipping" line and moves on
-(expected — see ML note).
+New/changed listings get Haiku extraction (within `AI_DAILY_BUDGET_USD`)
+**and FashionSigLIP vectors, automatically** — embed-on-ingest now runs in
+production (local CPU compute, no API cost), so newly crawled dresses join
+visual search and blended ranking without any manual `npm run embed` +
+re-upload cycle. Look for `[embed] embedding N new/changed listing(s)` in the
+logs after a crawl.
 
 ## 8. Fresh/empty volume behavior
 
@@ -167,28 +181,36 @@ secrets via `fly secrets set` restart the machine immediately.
 
 | Item | Monthly |
 |---|---|
-| shared-cpu-1x / 2GB, always on (scheduler needs it) | $10.70 |
+| shared-cpu-1x / 4GB, always on (scheduler + resident ML model) | $22.22 |
 | Volume 3GB × $0.15 | $0.45 |
 | Egress (beta traffic, NA/EU $0.02/GB) | ~$0–1 |
-| **Fly total** | **~$11–12/mo** |
+| **Fly total** | **~$23–24/mo** |
 | Anthropic API (capped by `AI_DAILY_BUDGET_USD=5`) | $0–150 worst case; realistically **$1–10/mo** (extraction is cached by content hash; re-rank is cached 24h) |
 
-## ML note: why there's no photo-embedding model in production (v1)
+(The no-ML option (b) config — 2GB VM, ~$11/mo — remains in git history if
+the budget ever needs to shrink; see `docs/decisions-deploy.md` §2/§2a.)
 
-The image deliberately excludes the FashionSigLIP sidecar (torch ≈ 1.6GB deps
-+ 780MB model + ~1GB RAM → would force a 4GB VM at $21.40/mo and a ~4GB
-image). What you keep vs. lose:
+## ML note: the FashionSigLIP sidecar ships in the image (option (a))
 
-- **Kept:** blended visual ranking in the feed — it reads the **stored
-  vectors you uploaded inside hemline.db**, no Python needed. Attribute
-  similarity, hem math, filters: all unaffected.
-- **Degraded:** "find dresses like this" photo/free-text search falls back to
-  Haiku attribute extraction (still works, just attribute-based:
-  `matchBasis: "attributes"` in the response). New listings crawled in prod
-  don't get vectors until you run `npm run embed` locally and re-upload the db
-  (or adopt the follow-up below).
+The production image bakes the full embedding stack: a CPU-only torch venv at
+`/app/ml/.venv` plus the ~860MB Marqo-FashionSigLIP checkpoint in a
+HuggingFace cache at `/app/ml/.hf` (`HF_HUB_OFFLINE=1` — boot never downloads
+weights). The web server eager-loads the model at startup
+(`HEMLINE_ML_EAGER=1`; `/api/health` reports `ml.state` warming → ready).
+What that buys:
 
-Follow-ups when photo search matters: run the sidecar on a second 2GB machine
-without a volume, or bake it in and move to `shared-cpu-2x/4gb` (+$10.70/mo).
+- **Visual photo/text search in prod:** "find dresses like this" embeds the
+  probe with FashionSigLIP and answers `matchBasis: "embedding"` — the
+  attribute path remains the automatic fallback if the sidecar ever fails.
+- **Embed-on-ingest:** newly crawled listings get vectors automatically (see
+  step 7) — no more local `npm run embed` + db re-upload cycle.
+- **Blended feed ranking** keeps reading stored vectors as before (it never
+  needed Python), now the vector set grows with every crawl.
+
+Costs of the trade (accepted, `docs/decisions-deploy.md` §2a): a ~3.5GB
+image (slower deploys — the ML layer is cached after the first), the 4GB VM
+at $22.22/mo instead of 2GB at $10.70, and ~1.3GB of RSS for the resident
+model — measured peak under load was 1.75GB, well within the 4GB VM.
+
 Backup follow-up: Litestream streaming replication — scaffold in
 `docker/litestream.yml`.

@@ -66,6 +66,93 @@ Upgrade paths documented in DEPLOY.md (second ML-only machine, or bake-in +
 4GB). Every ML-absent code path was already null-safe by design; verification
 (§6) exercises the container with no Python at all.
 
+## 2a. Revision (2026-07-08, same day): founder chose option (a) — bake the sidecar in
+
+The founder picked the photo-search upgrade: the FashionSigLIP sidecar now
+ships **inside** the production image on a `shared-cpu-1x/4GB` VM
+($22.22/mo per current Fly pricing — the shared-cpu-1x line prices RAM
+per-GB, so 1x/4GB beats the 2x/4GB $21.40 quote's CPU premium… Fly's
+calculator says $22.22 for 1x/4GB and that is the number DEPLOY.md carries).
+§2's option (b) analysis stands as the record of why v1 shipped without it;
+everything below documents what changed.
+
+**Dockerfile `ml` stage (weights baked at build time):**
+- Same `node:22-slim` base as the runtime, `apt python3 + python3-venv`,
+  venv at `/app/ml/.venv`. torch **and torchvision** come from the CPU-only
+  wheel index (`download.pytorch.org/whl/cpu`) — no CUDA/nvidia payload
+  (the default PyPI x86_64 torch would drag ~3GB of CUDA libs); the rest of
+  `ml/requirements.txt` from PyPI. Gotcha pinned in the Dockerfile: letting
+  PyPI supply torchvision against a `+cpu` torch aborts with
+  `operator torchvision::nms does not exist`.
+- `manylinux_2_28 +cpu` wheels exist for **both** linux/arm64 (local Apple
+  Silicon verify) and linux/amd64 (Fly's remote builders) — verified against
+  the index; bookworm's glibc 2.36 satisfies both. So the same Dockerfile
+  builds natively on either side; no cross-arch emulation anywhere.
+- `RUN embed.py warmup` with `HF_HOME=/app/ml/.hf` downloads the ~860MB
+  checkpoint + tokenizer INTO the image layer and smoke-tests one image and
+  one text embed — **a broken model fails the build, not the boot**. Runtime
+  sets `HF_HUB_OFFLINE=1`/`TRANSFORMERS_OFFLINE=1`: boot never touches the
+  network for weights. A second warmup runs at build time WITH those offline
+  vars set — the exact boot configuration — as a gate. It caught a real one:
+  transformers 5.x breaks offline loading for tokenizer repos lacking a
+  `config.json` (ignores the HF cache's `.no_exist` markers, raises
+  "couldn't connect to huggingface.co"); `ml/requirements.txt` now pins
+  `transformers>=4.48,<5` (4.57 loads the SigLIP tokenizer offline fine).
+  `ml/.venv`, `ml/.cache`, `ml/.hf` stay in `.dockerignore` — the container
+  never inherits the founder's macOS venv.
+- The ~2GB ml layer is COPY'd into the runner **before** the app layers, so
+  app-only rebuilds and re-deploys reuse it from cache.
+
+**Eager load at boot (vs lazy on first request):** eager won. The model load
+is 5–20s of torch+weights; lazy would (a) make the first user's photo search
+hang for it, and (b) hide a broken/OOMing model until a real user hits it.
+Eager (`HEMLINE_ML_EAGER=1` in the image → `apps/web/instrumentation.ts`
+fire-and-forgets `warmSharedEmbedder()`) pays the load once at deploy time,
+where `fly logs` shows it and a hard failure is visible immediately. The
+server accepts traffic during the warmup (health stays 200), and requests
+that arrive mid-load simply queue behind the `ready` line inside the bridge.
+RAM is NOT an argument for lazy here: the 4GB is provisioned (= paid) either
+way (§2's option (c) point).
+
+**Health tells the truth now:** `/api/health` `ml` went from "the venv files
+exist" to a real lifecycle — `{sidecarAvailable, state}` with
+`state ∈ unavailable | cold | warming | ready | failed`, driven by the
+shared child's `ready` protocol line (`packages/matching/src/embedder.ts`
+`sidecarStatus()`). `sidecarAvailable` is true for `ready` (model resident)
+and `cold` (lazy spawn would work — keeps local-dev semantics identical),
+false while `warming` or after `failed`. Local keyless dev without a venv
+still reports `unavailable`/false and nothing eager-loads (`HEMLINE_ML_EAGER`
+unset in dev).
+
+**Embed-on-ingest goes live in prod:** the pipeline's embed step now finds a
+sidecar, so newly crawled listings get vectors automatically — the
+"re-upload the db after `npm run embed`" loop from §2 is gone. The
+`nothing_missing` branch also logs one line now, so a fixtures run in prod
+shows the step executed rather than looking silently skipped.
+
+**fly.toml:** `memory = "4gb"` (same shared-cpu-1x), check `grace_period`
+20s → 30s (server still answers health in ~1s; slack for the python spawn),
+concurrency kept at 50/100 — probe embeds serialize through one sidecar
+child and find-similar is rate-limited 10/min/user, so web concurrency was
+never the ML bottleneck.
+
+**Two more gotchas the container verification caught (both now baked into
+the Dockerfile as comments/gates):**
+- `node:*-slim` ships **no `ca-certificates`** (Node bundles its own CA
+  store, so the web app never noticed) — python urllib → system OpenSSL →
+  every listing-image download died with CERTIFICATE_VERIFY_FAILED. Runner
+  now installs `ca-certificates`; caught because verification ran a REAL
+  staud.clothing crawl in the container, not just the fixtures skip path.
+- torchvision must come from the same CPU wheel index as torch (see above).
+
+**Measured locally (container, arm64):** image 3.52GB uncompressed (ml layer
+1.95GB = venv + 778MB HF cache); app-only rebuild ~1.5–2.5 min (ml layer
+cached). Boot: web answers in ~0.2s, model resident at **5.8s** (build-time
+warmup on the throttled builder saw 26s — treat 5–30s as the range). RSS:
+~1.3GB with the model resident, **1.75GB peak** under concurrent photo-embed
++ feed load — under 44% of the 4GB VM. SIGTERM → clean exit in 0.3s.
+Full transcript in the EM report.
+
 ## 3. Image: Next standalone + esbuild bundles, one gotcha
 
 - `output: 'standalone'` with `outputFileTracingRoot` = repo root works with
