@@ -10,9 +10,11 @@ coverage
 # local data lives on the Fly volume, never in the image
 data
 
-# ML sidecar artifacts (v1 image ships without the model — decisions-deploy.md)
+# ML sidecar artifacts — the image builds its OWN linux venv + HF cache in
+# the Dockerfile `ml` stage; the local macOS venv/caches must never leak in
 ml/.venv
 ml/.cache
+ml/.hf
 
 # secrets
 .env

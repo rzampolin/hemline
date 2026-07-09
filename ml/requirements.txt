@@ -4,6 +4,10 @@ torch>=2.6
 open_clip_torch>=2.30
 # open_clip's SigLIP configs use a timm vision tower + an HF sentencepiece tokenizer
 timm>=1.0
-transformers>=4.48
+# <5 pinned (2026-07-08 deploy-eng): transformers 5.x breaks HF_HUB_OFFLINE for
+# tokenizer repos without a config.json (ignores the cache's .no_exist markers,
+# dies with "couldn't connect to huggingface.co") — the prod image loads the
+# baked weights fully offline; 4.57 handles it correctly.
+transformers>=4.48,<5
 sentencepiece>=0.2
 pillow>=10

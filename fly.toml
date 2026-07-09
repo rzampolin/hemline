@@ -34,23 +34,33 @@ primary_region = "ewr" # pick the region closest to the founder; volume is creat
   force_https = true
   # auto_stop MUST stay off: the node-cron ingest scheduler lives in this
   # machine — stopping it between requests would silently kill the daily
-  # crawls. One always-on shared-cpu-1x/2GB is ~$10.70/mo (2026-07 pricing).
+  # crawls (and every stop would re-pay the 5-20s FashionSigLIP model load).
+  # One always-on shared-cpu-1x/4GB is ~$22.22/mo (2026-07 pricing).
   auto_stop_machines = "off"
   auto_start_machines = true
   min_machines_running = 1
 
+  # 50/100 kept from the no-ML config: probe embeds are serialized through a
+  # single sidecar child anyway (plus the 10/min/user find-similar rate limit),
+  # so web concurrency isn't the ML bottleneck — no reason to throttle the feed.
   [http_service.concurrency]
     type = "requests"
     soft_limit = 50
     hard_limit = 100
 
   [[http_service.checks]]
-    grace_period = "20s"
+    # the server answers /api/health within ~1s of boot (the FashionSigLIP
+    # eager warmup runs in the background; ml.state reports warming → ready),
+    # but give the python spawn + first page cache some slack
+    grace_period = "30s"
     interval = "30s"
     timeout = "5s"
     method = "GET"
     path = "/api/health"
 
 [[vm]]
+  # 4GB for the baked-in ML sidecar (option (a), docs/decisions-deploy.md §2a):
+  # torch + resident FashionSigLIP ≈ 1.1GB RSS + Next ~250MB + scheduler +
+  # sharp spikes — measured ~1.6GB total under load, 4GB removes the OOM class.
   size = "shared-cpu-1x"
-  memory = "2gb"
+  memory = "4gb"

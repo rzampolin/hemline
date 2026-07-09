@@ -1,9 +1,11 @@
 # syntax=docker/dockerfile:1
 # Hemline production image — web (Next standalone) + ingest scheduler in ONE
 # container, supervised by docker/start.mjs (SQLite volume = single machine;
-# docs/decisions-deploy.md). No Python/ML inside: the FashionSigLIP sidecar is
-# deliberately excluded for v1 — probe embedding degrades to the attribute
-# path, stored vectors on the volume still power blended ranking.
+# docs/decisions-deploy.md), PLUS the FashionSigLIP ML sidecar (option (a),
+# 2026-07-08): the `ml` stage bakes a CPU-only torch venv AND the ~860MB
+# model weights into the image at BUILD time, so boot never downloads
+# anything (HF_HUB_OFFLINE=1) and probe embedding / embed-on-ingest run in
+# prod. Costs ~2GB of image; needs the 4GB VM in fly.toml.
 #
 #   docker build -t hemline .
 #   docker run --rm -p 3000:3000 -v hemline-data:/data \
@@ -48,14 +50,65 @@ RUN ESB="node_modules/.bin/esbuild --bundle --platform=node --format=esm --targe
  && printf 'import "./impl/ingest-run.impl.mjs";\n'       > dist/ingest-run.mjs \
  && printf 'import "./impl/seed.impl.mjs";\n'             > dist/seed.mjs
 
-# ── runtime: standalone server + bundles + supervisor ───────────────────────
+# ── ml: FashionSigLIP venv + weights, baked at BUILD time ───────────────────
+# Same Debian base as the runtime so the venv's /usr/bin/python3.11 symlinks
+# resolve identically after COPY. torch comes from the CPU-only wheel index
+# (no CUDA/nvidia bloat — the default PyPI x86_64 wheel drags ~3GB of CUDA
+# libs); manylinux_2_28 +cpu wheels exist for BOTH linux/amd64 (Fly remote
+# builders) and linux/arm64 (local Apple Silicon verify), and bookworm's
+# glibc 2.36 satisfies them. torchvision (open_clip dep) must come from the
+# SAME index — a PyPI torchvision against a +cpu torch aborts with
+# "operator torchvision::nms does not exist". The warmup run downloads the checkpoint +
+# tokenizer into HF_HOME *inside the layer* and smoke-tests one image + one
+# text embed, so a broken model fails the BUILD, not the boot.
+FROM ${NODE_IMAGE} AS ml
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 python3-venv \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /app/ml
+COPY ml/requirements.txt ./
+RUN python3 -m venv .venv \
+ && .venv/bin/pip install --no-cache-dir --upgrade pip \
+ && .venv/bin/pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch torchvision \
+ && .venv/bin/pip install --no-cache-dir -r requirements.txt
+COPY ml/embed.py ./
+ENV HF_HOME=/app/ml/.hf
+RUN .venv/bin/python embed.py warmup \
+ && rm -rf .cache /root/.cache
+# build gate: prove the runtime's fully-OFFLINE load works against the baked
+# cache (this is exactly how boot runs it — a transformers/hub offline
+# regression must fail HERE, not on the first machine restart)
+RUN HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 .venv/bin/python embed.py warmup
+
+# ── runtime: standalone server + bundles + supervisor + ml sidecar ──────────
 FROM ${NODE_IMAGE} AS runner
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
-    DATABASE_PATH=/data/hemline.db
+    DATABASE_PATH=/data/hemline.db \
+    # ml sidecar: explicit dir (fly ssh console cwd isn't /app), baked HF
+    # cache, never touch the network for weights, eager-load at web boot
+    HEMLINE_ML_DIR=/app/ml \
+    HF_HOME=/app/ml/.hf \
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1 \
+    HEMLINE_ML_EAGER=1
 WORKDIR /app
+
+# system python for the venv (python3-venv not needed — venv already built)
+# + ca-certificates: node:slim ships NONE (Node bundles its own CA store, so
+# the web app never noticed) but embed.py downloads listing images via
+# python urllib → system OpenSSL → every https fetch dies with
+# CERTIFICATE_VERIFY_FAILED without it. Placed BEFORE the app layers: this
+# changes ~never, app code changes often.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# ~2GB layer (torch venv + weights) — kept early so app-only rebuilds reuse it.
+# node-owned: embed.py writes its image-download cache to /app/ml/.cache.
+COPY --from=ml --chown=node:node /app/ml /app/ml
 
 # standalone output mirrors the monorepo: apps/web/server.js + traced node_modules
 COPY --from=build --chown=node:node /repo/apps/web/.next/standalone ./
