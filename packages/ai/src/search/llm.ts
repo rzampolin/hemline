@@ -27,10 +27,19 @@ import { COLOR_FAMILIES } from './parse';
 
 /** Global parse cache TTL — parses are user-independent and queries repeat. */
 export const QUERY_PARSE_TTL_MS = 30 * 24 * 60 * 60_000;
-/** Negative-cache TTL for failures (timeout/API error/validation). */
+/** Negative-cache TTL for real failures (API error / schema-invalid / hung call). */
 export const QUERY_PARSE_FAILURE_TTL_MS = 5 * 60_000;
-/** Hard client-side deadline — search must never wait longer for enrichment. */
+/**
+ * Hard deadline the SEARCH REQUEST waits — the caller falls back to stage 1
+ * after this. The live call itself is NOT aborted: it keeps running in the
+ * background (bounded by QUERY_PARSE_BACKGROUND_TIMEOUT_MS) and writes the
+ * global cache, so the next identical search gets the enrichment for free.
+ * (Live eval 2026-07-09: cold Haiku structured-output calls run 2–4s; abort-
+ * and-negative-cache wasted the spend AND blocked retries for 5 minutes.)
+ */
 export const QUERY_PARSE_TIMEOUT_MS = 2_500;
+/** Upper bound on the background fill (hung connections, runaway spend). */
+export const QUERY_PARSE_BACKGROUND_TIMEOUT_MS = 15_000;
 /** Output is tiny (a handful of enums + one sentence); 2× worst case. */
 export const QUERY_PARSE_MAX_OUTPUT_TOKENS = 600;
 
@@ -129,36 +138,33 @@ export function createQueryParser(options: QueryParserOptions = {}): QueryParser
   const log = options.logger ?? ((m: string) => console.log(m));
   const now = options.now ?? Date.now;
 
+  /**
+   * The live call — runs to COMPLETION even when the requesting search has
+   * already fallen back to stage 1 (see QUERY_PARSE_TIMEOUT_MS): success
+   * writes the positive global cache; only real failures (API error,
+   * truncation, schema-invalid, hung past the background bound) write the
+   * short-TTL negative entry.
+   */
   async function liveParse(q: string, cacheKey: string): Promise<QueryParseOutcome | null> {
     const anthropic = client.anthropic!;
     const model = client.models.rerank; // Haiku — same tier as the re-ranker
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const message = await Promise.race([
-        anthropic.messages.create(
-          {
-            model,
-            max_tokens: maxTokens,
-            system: [
-              {
-                type: 'text',
-                text: QUERY_PARSE_SYSTEM_PROMPT,
-                cache_control: { type: 'ephemeral' },
-              },
-            ],
-            messages: [{ role: 'user', content: `QUERY: ${q}` }],
-            output_config: { format: zodOutputFormat(LlmQueryParseSchema) },
-          },
-          { signal: controller.signal },
-        ),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => {
-            controller.abort();
-            reject(new Error(`query parse timed out after ${timeoutMs}ms`));
-          }, timeoutMs);
-        }),
-      ]);
+      const message = await anthropic.messages.create(
+        {
+          model,
+          max_tokens: maxTokens,
+          system: [
+            {
+              type: 'text',
+              text: QUERY_PARSE_SYSTEM_PROMPT,
+              cache_control: { type: 'ephemeral' },
+            },
+          ],
+          messages: [{ role: 'user', content: `QUERY: ${q}` }],
+          output_config: { format: zodOutputFormat(LlmQueryParseSchema) },
+        },
+        { timeout: QUERY_PARSE_BACKGROUND_TIMEOUT_MS },
+      );
       const costUsd = client.meter.record(model, message.usage);
       if (message.stop_reason === 'max_tokens') {
         throw new Error(`query parse truncated at max_tokens=${maxTokens}`);
@@ -172,8 +178,8 @@ export function createQueryParser(options: QueryParserOptions = {}): QueryParser
       await cache.set(cacheKey, { parse }, now() + QUERY_PARSE_TTL_MS);
       return { parse, source: 'llm', costUsd };
     } catch (err) {
-      // Loud + short-TTL negative cache: a failing parse never re-bills
-      // (or re-waits the timeout) on every keystroke-search for 5 minutes.
+      // Loud + short-TTL negative cache: a genuinely failing parse never
+      // re-bills on every keystroke-search for 5 minutes.
       log(
         `[QUERY-PARSE] live parse FAILED (negative-cached ${QUERY_PARSE_FAILURE_TTL_MS / 60_000}min): ${(err as Error).message}`,
       );
@@ -183,8 +189,6 @@ export function createQueryParser(options: QueryParserOptions = {}): QueryParser
         // cache write failure must not mask the degradation
       }
       return null;
-    } finally {
-      clearTimeout(timer);
     }
   }
 
@@ -198,10 +202,25 @@ export function createQueryParser(options: QueryParserOptions = {}): QueryParser
     }
     if (client.effectiveMode() === 'mock') return null; // keyless / over budget
 
-    const inFlight = inFlightParses.get(cacheKey);
-    if (inFlight) return inFlight;
-    const p = liveParse(q, cacheKey).finally(() => inFlightParses.delete(cacheKey));
-    inFlightParses.set(cacheKey, p);
-    return p;
+    // One live fill per cache key process-wide; every waiter races the SAME
+    // fill against the request deadline, so a slow parse costs exactly one
+    // call and lands in the cache for the next search.
+    let fill = inFlightParses.get(cacheKey);
+    if (!fill) {
+      fill = liveParse(q, cacheKey).finally(() => inFlightParses.delete(cacheKey));
+      inFlightParses.set(cacheKey, fill);
+      fill.catch(() => {}); // background continuation must never be unhandled
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), timeoutMs);
+    });
+    try {
+      const result = await Promise.race([fill, deadline]);
+      if (result === 'timeout') return null; // stage-1 fallback; fill continues
+      return result;
+    } finally {
+      clearTimeout(timer);
+    }
   };
 }

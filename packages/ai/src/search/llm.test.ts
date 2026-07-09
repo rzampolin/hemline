@@ -149,7 +149,7 @@ describe('createQueryParser', () => {
     expect(create).toHaveBeenCalledTimes(2);
   });
 
-  it('hangs past the hard timeout → null + negative cache', async () => {
+  it('a call slower than the request deadline → null NOW, but repeats dedupe to the in-flight fill', async () => {
     const create = vi.fn(() => new Promise(() => {})); // never settles
     const cache = new InMemoryQueryParseCache();
     const parser = createQueryParser({
@@ -158,8 +158,26 @@ describe('createQueryParser', () => {
       timeoutMs: 20,
       logger: () => {},
     });
-    expect(await parser('hanging query')).toBeNull();
-    expect(await parser('hanging query')).toBeNull(); // negative entry, no second call
+    expect(await parser('hanging query')).toBeNull(); // request fell back to stage 1
+    expect(await parser('hanging query')).toBeNull(); // same in-flight fill, no second call
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('a slow-but-successful call fills the cache in the background (next search hits it)', async () => {
+    const create = vi.fn(
+      () => new Promise((resolve) => setTimeout(() => resolve(llmMessage(PARSE_SUMMER_FORMAL)), 50)),
+    );
+    const cache = new InMemoryQueryParseCache();
+    const parser = createQueryParser({
+      client: liveClient(create as CreateFn),
+      cache,
+      timeoutMs: 10,
+      logger: () => {},
+    });
+    expect(await parser('slow success query')).toBeNull(); // deadline hit — stage 1 served
+    await new Promise((r) => setTimeout(r, 80)); // background fill lands
+    const r2 = await parser('slow success query');
+    expect(r2?.source).toBe('llm_cache'); // enrichment for free next time
     expect(create).toHaveBeenCalledTimes(1);
   });
 
