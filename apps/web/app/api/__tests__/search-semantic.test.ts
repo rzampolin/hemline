@@ -67,6 +67,7 @@ function candidate(id: string, title: string): CandidateListing {
     attributeVector: {},
     sourceKind: 'fixture',
     description: null,
+    removedAt: null,
   };
 }
 

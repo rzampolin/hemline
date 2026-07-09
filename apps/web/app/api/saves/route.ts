@@ -46,6 +46,10 @@ export async function GET(req: Request) {
     const now = Date.now();
     const staleIds = candidates
       .filter((c) => {
+        // soft-removed = verified sold/gone (or crawl-pruned) — last_seen_at
+        // may still be FRESH when the verification worker caught it between
+        // crawls, so removal must flag independently of staleness.
+        if (c.removedAt != null) return true;
         const windowH = FRESHNESS_HOURS_BY_KIND[c.sourceKind] ?? DEFAULT_FRESHNESS_HOURS;
         return now - c.listing.lastSeenAt > windowH * 3_600_000;
       })

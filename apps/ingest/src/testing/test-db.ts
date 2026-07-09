@@ -50,6 +50,7 @@ const DDL = [
     first_seen_at      INTEGER NOT NULL,
     last_seen_at       INTEGER NOT NULL,
     removed_at         INTEGER,
+    verified_at        INTEGER,
     UNIQUE (source_id, source_listing_id)
   )`,
   `CREATE INDEX idx_listings_last_seen ON listings(last_seen_at)`,

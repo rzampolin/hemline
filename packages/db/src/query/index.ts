@@ -12,5 +12,6 @@ export * from './alerts';
 export * from './admin';
 export * from './clickouts';
 export * from './analytics';
+export * from './verification';
 export * from './ai-cache';
 export * from './embeddings';

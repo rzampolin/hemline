@@ -11,8 +11,11 @@ import {
   createDb,
   DEMO_USER_ID,
   ensureSchema,
+  listings,
   runSeed,
+  sources,
   swipeEvents,
+  verificationQueue,
   type Db,
 } from '@hemline/db';
 import { eq, and } from 'drizzle-orm';
@@ -777,5 +780,94 @@ describe('currency (QA P1 #3): GBP fixture', () => {
       ),
     );
     expect(over.items.map((i: any) => i.listing.id)).toContain(GBP_ID);
+  });
+});
+
+describe('sold-detection (2026-07-09): clickout → verification queue + rack flag', () => {
+  const VERIFIABLE_ID = 'shopify:verify-test.example:9001';
+
+  it('clickout on a verifiable listing enqueues it for verification', async () => {
+    db.insert(sources)
+      .values({
+        id: 'shopify:verify-test.example',
+        kind: 'shopify',
+        displayName: 'Verify Test',
+        cadenceCron: '0 6 * * *',
+      })
+      .onConflictDoNothing()
+      .run();
+    db.insert(listings)
+      .values({
+        id: VERIFIABLE_ID,
+        sourceId: 'shopify:verify-test.example',
+        sourceListingId: '9001',
+        sourceUrl: 'https://verify-test.example/products/silk-midi-dress',
+        title: 'Silk Midi Dress',
+        priceCents: 12800,
+        currency: 'USD',
+        sizeLabelsJson: '["S","M"]',
+        sizeNormalizedJson: '[4,6,8]',
+        availabilityJson: '{"S":true,"M":true}',
+        contentHash: 'hash-verify-9001',
+        firstSeenAt: Date.now(),
+        lastSeenAt: Date.now(),
+      })
+      .run();
+
+    const res = await clickoutsPOST(jsonReq('/api/clickouts', 'POST', { listingId: VERIFIABLE_ID }));
+    expect(res.status).toBe(200);
+    const queued = db
+      .select()
+      .from(verificationQueue)
+      .where(eq(verificationQueue.listingId, VERIFIABLE_ID))
+      .all();
+    expect(queued).toHaveLength(1);
+    expect(queued[0].reason).toBe('clickout');
+
+    // repeat click dedupes; the clickout itself is still recorded
+    expect((await clickoutsPOST(jsonReq('/api/clickouts', 'POST', { listingId: VERIFIABLE_ID }))).status).toBe(200);
+    expect(
+      db.select().from(verificationQueue).where(eq(verificationQueue.listingId, VERIFIABLE_ID)).all(),
+    ).toHaveLength(1);
+  });
+
+  it('clickout on an unverifiable (fixture) listing records but does not enqueue', async () => {
+    const feed = await data(
+      await rankPOST(jsonReq('/api/rank', 'POST', { userId: DEMO_USER_ID, filters: {}, limit: 1, personalize: false })),
+    );
+    const fixtureId = feed.items[0].listing.id;
+    expect((await clickoutsPOST(jsonReq('/api/clickouts', 'POST', { listingId: fixtureId }))).status).toBe(200);
+    expect(
+      db.select().from(verificationQueue).where(eq(verificationQueue.listingId, fixtureId)).all(),
+    ).toHaveLength(0);
+  });
+
+  it('rack "possibly sold" flag flips when a verified-sold listing gets removed_at (fresh last_seen_at)', async () => {
+    const feed = await data(
+      await rankPOST(jsonReq('/api/rank', 'POST', { userId: DEMO_USER_ID, filters: {}, limit: 1, personalize: false })),
+    );
+    const id = feed.items[0].listing.id;
+    await data(await savesPOST(jsonReq('/api/saves', 'POST', { listingId: id })));
+
+    // seen moments ago → inside every freshness window → NOT flagged
+    db.update(listings).set({ lastSeenAt: Date.now(), removedAt: null }).where(eq(listings.id, id)).run();
+    const before = await data(await savesGET(jsonReq('/api/saves', 'GET')));
+    expect(before.items.map((i: any) => i.listing.id)).toContain(id);
+    expect(before.staleIds).not.toContain(id);
+
+    // verification worker marks it sold between crawls: removed_at set while
+    // last_seen_at is still fresh — the flag must flip on removal alone
+    db.update(listings).set({ removedAt: Date.now() }).where(eq(listings.id, id)).run();
+    const after = await data(await savesGET(jsonReq('/api/saves', 'GET')));
+    expect(after.items.map((i: any) => i.listing.id)).toContain(id); // still on the rack
+    expect(after.staleIds).toContain(id); // …but flagged "possibly sold"
+
+    // restore for any later assertions over the corpus
+    db.update(listings).set({ removedAt: null }).where(eq(listings.id, id)).run();
+    await data(
+      await saveDELETE(jsonReq(`/api/saves/${encodeURIComponent(id)}`, 'DELETE'), {
+        params: Promise.resolve({ listingId: id }),
+      }),
+    );
   });
 });
