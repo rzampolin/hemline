@@ -8,7 +8,15 @@
  */
 import { and, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import type { Db } from '../client';
-import { extractionCorrections, extractions, ingestRuns, listings, sources } from '../schema';
+import {
+  extractionCorrections,
+  extractions,
+  ingestRuns,
+  listingEmbeddings,
+  listingImages,
+  listings,
+  sources,
+} from '../schema';
 
 // ── G1: ingestion health ────────────────────────────────────────────────
 
@@ -127,6 +135,66 @@ export function listSourceIds(db: Db, onlyEnabled = true): string[] {
   return rows.map((r) => r.id);
 }
 
+// ── Catalog overview (admin dashboard header, additive 2026-07-09) ──────
+
+export interface CatalogOverview {
+  listings: { total: number; active: number };
+  /** embedding rows / distinct active listings with at least one vector */
+  vectors: { rows: number; embeddedListings: number };
+  /**
+   * Extraction coverage over ACTIVE listings (the denominator founders care
+   * about): how much of the live catalog has each attribute filled in.
+   * Percentages are 0–100, rounded to one decimal.
+   */
+  extraction: {
+    extractedListings: number;
+    lengthClassPct: number;
+    lengthInchesPct: number;
+    colorsPct: number;
+  };
+}
+
+/** Read-only aggregate for the admin dashboard header. Cheap count queries. */
+export function catalogOverview(db: Db): CatalogOverview {
+  const n = (row: { n: number } | undefined) => row?.n ?? 0;
+  const total = n(db.select({ n: sql<number>`count(*)` }).from(listings).get());
+  const active = n(
+    db.select({ n: sql<number>`count(*)` }).from(listings).where(isNull(listings.removedAt)).get(),
+  );
+  const vectorRows = n(db.select({ n: sql<number>`count(*)` }).from(listingEmbeddings).get());
+  const embeddedListings = n(
+    db
+      .select({ n: sql<number>`count(distinct ${listingEmbeddings.listingId})` })
+      .from(listingEmbeddings)
+      .innerJoin(listings, eq(listings.id, listingEmbeddings.listingId))
+      .where(isNull(listings.removedAt))
+      .get(),
+  );
+  // one pass over active-listing extractions for all coverage counters
+  const cov = db
+    .select({
+      extracted: sql<number>`count(distinct ${extractions.listingId})`,
+      withLengthClass: sql<number>`count(distinct case when ${extractions.lengthClass} is not null then ${extractions.listingId} end)`,
+      withLengthInches: sql<number>`count(distinct case when ${extractions.lengthInches} is not null then ${extractions.listingId} end)`,
+      withColors: sql<number>`count(distinct case when ${extractions.colorsJson} not in ('[]', '') then ${extractions.listingId} end)`,
+    })
+    .from(extractions)
+    .innerJoin(listings, eq(listings.id, extractions.listingId))
+    .where(isNull(listings.removedAt))
+    .get();
+  const pct = (x: number) => (active > 0 ? Math.round((x / active) * 1000) / 10 : 0);
+  return {
+    listings: { total, active },
+    vectors: { rows: vectorRows, embeddedListings },
+    extraction: {
+      extractedListings: cov?.extracted ?? 0,
+      lengthClassPct: pct(cov?.withLengthClass ?? 0),
+      lengthInchesPct: pct(cov?.withLengthInches ?? 0),
+      colorsPct: pct(cov?.withColors ?? 0),
+    },
+  };
+}
+
 // ── G2: extraction QA ───────────────────────────────────────────────────
 
 export interface ExtractionQaRow {
@@ -151,7 +219,16 @@ export interface ExtractionQaRow {
   /** raw source text for side-by-side QA */
   rawTitle: string;
   rawDescription: string | null;
+  /** first listing image (additive 2026-07-09, admin dashboard thumbnails) */
+  imageUrl: string | null;
 }
+
+/** Correlated subquery: first image url for the joined listing row. */
+const firstImageUrl = sql<string | null>`(
+  select ${listingImages.url} from ${listingImages}
+  where ${listingImages.listingId} = ${listings.id}
+  order by ${listingImages.position} asc limit 1
+)`;
 
 export interface ExtractionQaQuery {
   maxConfidence?: number;
@@ -178,7 +255,7 @@ export function listExtractionsForQa(db: Db, q: ExtractionQaQuery = {}): {
       .where(where)
       .get()?.n ?? 0;
   const rows = db
-    .select({ e: extractions, l: listings })
+    .select({ e: extractions, l: listings, imageUrl: firstImageUrl })
     .from(extractions)
     .innerJoin(listings, eq(listings.id, extractions.listingId))
     .where(where)
@@ -195,7 +272,7 @@ export function listExtractionsForQa(db: Db, q: ExtractionQaQuery = {}): {
   };
   return {
     total,
-    items: rows.map(({ e, l }) => ({
+    items: rows.map(({ e, l, imageUrl }) => ({
       contentHash: e.contentHash,
       listingId: e.listingId,
       listingTitle: l.title,
@@ -216,6 +293,7 @@ export function listExtractionsForQa(db: Db, q: ExtractionQaQuery = {}): {
       extractedAt: e.extractedAt,
       rawTitle: l.title,
       rawDescription: l.description ?? null,
+      imageUrl: imageUrl ?? null,
     })),
   };
 }
@@ -289,7 +367,7 @@ export function applyExtractionCorrection(
 
 export function getExtractionQaRow(db: Db, contentHash: string): ExtractionQaRow | null {
   const row = db
-    .select({ e: extractions, l: listings })
+    .select({ e: extractions, l: listings, imageUrl: firstImageUrl })
     .from(extractions)
     .innerJoin(listings, eq(listings.id, extractions.listingId))
     .where(eq(extractions.contentHash, contentHash))
@@ -324,5 +402,6 @@ export function getExtractionQaRow(db: Db, contentHash: string): ExtractionQaRow
     extractedAt: e.extractedAt,
     rawTitle: l.title,
     rawDescription: l.description ?? null,
+    imageUrl: row.imageUrl ?? null,
   };
 }

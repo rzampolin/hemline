@@ -502,6 +502,36 @@ describe('admin', () => {
     expect(shopify.listingCounts.active).toBe(shopify.listingCounts.total);
   });
 
+  it('GET /api/admin/ingest carries the additive catalog overview (admin dashboard header)', async () => {
+    const health = await data(await adminIngestGET(jsonReq('/api/admin/ingest', 'GET')));
+    const c = health.catalog;
+    expect(c.listings.total).toBeGreaterThan(0);
+    expect(c.listings.active).toBeLessThanOrEqual(c.listings.total);
+    expect(c.vectors.embeddedListings).toBeLessThanOrEqual(c.vectors.rows + 1);
+    expect(c.extraction.extractedListings).toBeGreaterThan(0);
+    // coverage percentages are 0–100 over ACTIVE listings
+    for (const pct of [
+      c.extraction.lengthClassPct,
+      c.extraction.lengthInchesPct,
+      c.extraction.colorsPct,
+    ]) {
+      expect(pct).toBeGreaterThanOrEqual(0);
+      expect(pct).toBeLessThanOrEqual(100);
+    }
+    // seeded fixtures all have colors → full coverage
+    expect(c.extraction.colorsPct).toBeGreaterThan(0);
+  });
+
+  it('extraction QA rows carry a thumbnail imageUrl (additive, dashboard)', async () => {
+    const qa = await data(
+      await adminExtractionsGET(jsonReq('/api/admin/extractions?maxConfidence=1', 'GET')),
+    );
+    expect(qa.items.length).toBeGreaterThan(0);
+    // seeded fixtures have images: every row exposes its first image url
+    expect(qa.items.some((r: any) => typeof r.imageUrl === 'string')).toBe(true);
+    expect(qa.items.every((r: any) => 'imageUrl' in r)).toBe(true);
+  });
+
   it('POST /api/admin/ingest runs the REAL fixtures pipeline and returns runId', async () => {
     const res = await data(
       await adminIngestPOST(jsonReq('/api/admin/ingest', 'POST', { sourceId: 'fixture:shopify' })),

@@ -15,6 +15,7 @@
 import { AdminIngestRequestSchema, type AdminIngestResponse } from '@hemline/contracts';
 import { runIngestForSource, type IngestRunOutcome } from '@hemline/ingest';
 import {
+  catalogOverview,
   clickoutStats,
   ingestionHealth,
   insertIngestRun,
@@ -36,7 +37,13 @@ export async function GET(req: Request) {
     const db = getDb();
     // `clickouts` is additive (spec G4, 2026-07-08): outbound-CTA attribution
     // counts — total / last-24h / per-source — next to ingest health.
-    return ok({ sources: ingestionHealth(db), clickouts: clickoutStats(db) });
+    // `catalog` is additive (admin dashboard, 2026-07-09): listing/vector
+    // totals + extraction coverage % for the dashboard header (read-only).
+    return ok({
+      sources: ingestionHealth(db),
+      clickouts: clickoutStats(db),
+      catalog: catalogOverview(db),
+    });
   } catch (err) {
     return serverError('admin/ingest', err);
   }
