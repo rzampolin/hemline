@@ -7,6 +7,7 @@ import {
   matchesQuery,
   measurementsFit,
   sizeCompatible,
+  stratifiedCap,
 } from './filters';
 
 function listing(overrides: Partial<Listing> = {}): Listing {
@@ -199,5 +200,88 @@ describe('applyHardFilters — cap 500 newest-first', () => {
     expect(result).toHaveLength(CANDIDATE_CAP);
     expect(result[0].lastSeenAt).toBe(599);
     expect(result[499].lastSeenAt).toBe(100);
+  });
+});
+
+describe('stratifiedCap — source+brand stratification under the cap (2026-07-09)', () => {
+  /** Sequential-crawl shape: brand A crawled LAST dominates the newest window. */
+  function skewedPool(): Listing[] {
+    const pool: Listing[] = [];
+    for (let i = 0; i < 600; i++) {
+      pool.push(
+        listing({
+          id: `a${i}`,
+          brand: 'Brand A',
+          sourceId: 'shopify:a.com',
+          lastSeenAt: 2_000_000 + i, // crawled last — all newest
+        }),
+      );
+    }
+    for (const [b, base] of [
+      ['Brand B', 1_000_000],
+      ['Brand C', 900_000],
+      ['Brand D', 800_000],
+    ] as const) {
+      for (let i = 0; i < 30; i++) {
+        pool.push(
+          listing({
+            id: `${b[6].toLowerCase()}${i}`,
+            brand: b,
+            sourceId: `shopify:${b[6].toLowerCase()}.com`,
+            lastSeenAt: base + i,
+          }),
+        );
+      }
+    }
+    return pool;
+  }
+
+  it('every stratum is represented before any gets depth (dominant crawl no longer evicts)', () => {
+    const result = stratifiedCap(skewedPool(), CANDIDATE_CAP);
+    expect(result).toHaveLength(CANDIDATE_CAP);
+    const byBrand = new Map<string, number>();
+    for (const l of result) byBrand.set(l.brand!, (byBrand.get(l.brand!) ?? 0) + 1);
+    // all 30 of each minority brand survive; the dominant brand fills the rest
+    expect(byBrand.get('Brand B')).toBe(30);
+    expect(byBrand.get('Brand C')).toBe(30);
+    expect(byBrand.get('Brand D')).toBe(30);
+    expect(byBrand.get('Brand A')).toBe(CANDIDATE_CAP - 90);
+    expect(byBrand.size).toBe(4);
+  });
+
+  it('within a stratum the freshest listings survive', () => {
+    const result = stratifiedCap(skewedPool(), CANDIDATE_CAP);
+    const aTimes = result.filter((l) => l.brand === 'Brand A').map((l) => l.lastSeenAt);
+    // A keeps its 410 newest (2_000_190 … 2_000_599)
+    expect(Math.min(...aTimes)).toBe(2_000_000 + 600 - (CANDIDATE_CAP - 90));
+    expect(Math.max(...aTimes)).toBe(2_000_599);
+  });
+
+  it('returns newest-first regardless of stratification', () => {
+    const result = stratifiedCap(skewedPool(), CANDIDATE_CAP);
+    for (let i = 1; i < result.length; i++) {
+      expect(result[i - 1].lastSeenAt).toBeGreaterThanOrEqual(result[i].lastSeenAt);
+    }
+  });
+
+  it('no-op (plain newest sort) when the pool fits under the cap', () => {
+    const pool = skewedPool().slice(0, 100);
+    const result = stratifiedCap(pool, CANDIDATE_CAP);
+    expect(result).toHaveLength(100);
+    expect(result.map((l) => l.id)).toEqual(
+      [...pool].sort((a, b) => b.lastSeenAt - a.lastSeenAt).map((l) => l.id),
+    );
+  });
+
+  it('applyHardFilters composes hard filters WITH stratification (budget still respected)', () => {
+    const pool = skewedPool().map((l, i) =>
+      // price every 3rd listing out of budget
+      i % 3 === 0 ? { ...l, priceCents: 99_000 } : l,
+    );
+    const result = applyHardFilters(pool, { priceMaxCents: 20_000 }, undefined, 300);
+    expect(result).toHaveLength(300);
+    expect(result.every((l) => l.priceCents <= 20_000)).toBe(true);
+    const brands = new Set(result.map((l) => l.brand));
+    expect(brands.size).toBe(4);
   });
 });

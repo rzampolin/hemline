@@ -11,7 +11,7 @@ import { toUsdCents } from '@hemline/contracts';
 import type { HardFilters, HemResult, Listing, Silhouette } from '@hemline/contracts';
 import { computeHem } from './effective-length';
 
-/** Candidate pool cap: 500 newest-first (doc §6). */
+/** Candidate pool cap: 500 (doc §6), stratified across source+brand. */
 export const CANDIDATE_CAP = 500;
 
 /**
@@ -172,8 +172,16 @@ export function matchesHardFilters(
 }
 
 /**
- * Apply all hard filters and the §6 candidate cap: 500 newest-first (by
- * `lastSeenAt` desc — freshest sighting first).
+ * Apply all hard filters and the §6 candidate cap.
+ *
+ * Cap semantics (2026-07-09 fix, docs/decisions-matching.md): the survivors of
+ * the cap are selected by SOURCE-FAIR, BRAND-SPREAD stratification rather than
+ * plain "newest 500" — after a big sequential crawl, newest-500 collapses to
+ * "the last store crawled" and the whole feed goes monochrome. Every active
+ * source gets an equal share of the pool (up to its size), consumed
+ * breadth-first across the source's brands. The returned order stays
+ * newest-first; freshness decay in scoring still differentiates within the
+ * pool.
  */
 export function applyHardFilters(
   listings: Listing[],
@@ -181,10 +189,79 @@ export function applyHardFilters(
   ctx?: UserFitContext,
   cap: number = CANDIDATE_CAP,
 ): Listing[] {
-  return listings
-    .filter((l) => matchesHardFilters(l, filters, ctx))
-    .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
-    .slice(0, cap);
+  return stratifiedCap(
+    listings.filter((l) => matchesHardFilters(l, filters, ctx)),
+    cap,
+  );
+}
+
+/** The minimal shape stratifiedCap needs — Listing satisfies it, and so do
+ * the lightweight (id, sourceId, brand, lastSeenAt) rows the SQL layer uses. */
+export interface StratumItem {
+  id: string;
+  sourceId: string;
+  brand: string | null;
+  lastSeenAt: number;
+}
+
+const byNewest = <T extends StratumItem>(a: T, b: T): number =>
+  b.lastSeenAt - a.lastSeenAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+/**
+ * Cap a pool to `cap` items with TWO-LEVEL stratification: SOURCE-fair first
+ * (round k admits the k-th pick of every source before any source gets its
+ * k+1-th), and within each source breadth-first across its BRANDS
+ * (freshest-first within a brand).
+ *
+ * Why source-first rather than flat (source, brand) strata: the symptom is a
+ * sequential crawl making one STORE the whole pool, and flat brand strata are
+ * gameable by brand-label noise — a store whose "brands" are really
+ * collection names (Sister Jane's "DREAM Showgirls", STAUD's season codes)
+ * would get one stratum per label and re-dominate the pool. Source-fair
+ * budgeting is immune to that; the within-source brand round-robin still
+ * spreads a multi-brand store's budget across its real brands. See
+ * docs/decisions-matching.md.
+ *
+ * This is the in-memory source of truth; packages/db queryCandidates applies
+ * the same function to select which rows survive its cap. Result is returned
+ * newest-first, so callers see the pre-fix ordering contract.
+ */
+export function stratifiedCap<T extends StratumItem>(items: T[], cap: number = CANDIDATE_CAP): T[] {
+  if (items.length <= cap) return [...items].sort(byNewest);
+  const sorted = [...items].sort(byNewest);
+  // source → brand → newest-first queue
+  const bySource = new Map<string, Map<string, T[]>>();
+  for (const item of sorted) {
+    let brands = bySource.get(item.sourceId);
+    if (!brands) {
+      brands = new Map();
+      bySource.set(item.sourceId, brands);
+    }
+    const brandKey = item.brand?.trim().toLowerCase() ?? '';
+    const queue = brands.get(brandKey);
+    if (queue) queue.push(item);
+    else brands.set(brandKey, [item]);
+  }
+  // each source's budget is consumed brand-breadth-first
+  const sourceQueues = [...bySource.values()].map((brands) => roundRobin([...brands.values()]));
+  return roundRobin(sourceQueues).slice(0, cap).sort(byNewest);
+}
+
+/** Breadth-first merge: round k takes the k-th item of every queue (freshest
+ * first within a round) until all queues are exhausted. */
+function roundRobin<T extends StratumItem>(queues: T[][]): T[] {
+  const out: T[] = [];
+  for (let depth = 0; ; depth++) {
+    const round: T[] = [];
+    for (const q of queues) {
+      const item = q[depth];
+      if (item) round.push(item);
+    }
+    if (round.length === 0) break;
+    round.sort(byNewest);
+    out.push(...round);
+  }
+  return out;
 }
 
 function hemForFilter(listing: Listing, ctx?: UserFitContext): HemResult {

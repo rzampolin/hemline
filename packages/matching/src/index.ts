@@ -5,4 +5,5 @@ export * from './similarity';
 export * from './embedding';
 export * from './scoring';
 export * from './filters';
+export * from './diversity';
 export * from './matching-service';

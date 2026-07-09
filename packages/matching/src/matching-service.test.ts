@@ -249,6 +249,92 @@ describe('createMatchingService.rank', () => {
   });
 });
 
+/* ── Brand-diversity guard (2026-07-09 monoculture fix) ──────────────────
+ * One store's sequential crawl must not paint the whole page: with a pool of
+ * 400 brand-A + 30 each B/C/D (A also freshest, i.e. highest-scored for a
+ * neutral profile), the top-24 page still shows ≥4 brands, never 3-in-a-row. */
+describe('brand-diversity guard in rank()', () => {
+  function skewedListings(): Listing[] {
+    const items: Listing[] = [];
+    for (let i = 0; i < 400; i++) {
+      items.push(
+        listing(`a${i}`, {
+          brand: 'Brand A',
+          sourceId: 'shopify:a.com',
+          lastSeenAt: NOW - i * 60_000, // crawled last — freshest block
+        }),
+      );
+    }
+    for (const [b, offsetDays] of [
+      ['Brand B', 2],
+      ['Brand C', 3],
+      ['Brand D', 4],
+    ] as const) {
+      for (let i = 0; i < 30; i++) {
+        items.push(
+          listing(`${b.toLowerCase().replace(/\s/g, '')}${i}`, {
+            brand: b,
+            sourceId: `shopify:${b[6].toLowerCase()}.com`,
+            lastSeenAt: NOW - offsetDays * DAY - i * 60_000,
+          }),
+        );
+      }
+    }
+    return items;
+  }
+
+  it('top-24 page has ≥4 distinct brands and no 3-in-a-row', async () => {
+    const { service } = makeService(skewedListings());
+    const res = await service.rank({
+      userId: 'user-1',
+      filters: {},
+      limit: 24,
+      personalize: false,
+    });
+    const brands = res.items.map((i) => i.listing.brand);
+    expect(new Set(brands).size).toBeGreaterThanOrEqual(4);
+    for (let i = 2; i < brands.length; i++) {
+      expect(brands[i] === brands[i - 1] && brands[i] === brands[i - 2]).toBe(false);
+    }
+  });
+
+  it('guard is a pure re-ordering: totalMatched and result set unchanged', async () => {
+    const pool = skewedListings();
+    const { service } = makeService(pool);
+    const res = await service.rank({
+      userId: 'user-1',
+      filters: {},
+      limit: 100,
+      personalize: false,
+    });
+    expect(res.totalMatched).toBe(490); // full pool (under the cap) — nothing filtered out
+    expect(new Set(res.items.map((i) => i.listing.id)).size).toBe(100);
+  });
+
+  it('stratified cap keeps minority brands in the pool despite a 400-item fresh crawl', async () => {
+    // pool > cap: 600 A crushes the cap; B/C/D must all survive
+    const items = skewedListings();
+    for (let i = 400; i < 600; i++) {
+      items.push(
+        listing(`a${i}`, {
+          brand: 'Brand A',
+          sourceId: 'shopify:a.com',
+          lastSeenAt: NOW - i * 60_000,
+        }),
+      );
+    }
+    const { service } = makeService(items);
+    const res = await service.rank({
+      userId: 'user-1',
+      filters: {},
+      limit: 24,
+      personalize: false,
+    });
+    expect(res.totalMatched).toBe(500);
+    expect(new Set(res.items.map((i) => i.listing.brand)).size).toBeGreaterThanOrEqual(4);
+  });
+});
+
 /* ── D2 global palette-boost toggle (QA P1 #1, 2026-07-08) ────────────────
  * paletteBoostEnabled=false must neutralize the boost in the scoring
  * composition: same result SET (never hides — spec invariant), different

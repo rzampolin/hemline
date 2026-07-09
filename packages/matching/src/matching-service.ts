@@ -1,7 +1,7 @@
 /**
  * MatchingService composition — docs/ARCHITECTURE.md §4.4 + §6 pipeline:
  *
- *   candidates (hard filters, cap 500 newest-first)
+ *   candidates (hard filters, cap 500 — source/brand-stratified, 2026-07-09)
  *     → score₀ = similarity × paletteBoost × freshnessDecay
  *     → top-N (50) optional LLM re-rank → blend 0.6·llm + 0.4·score₀
  *     → paginate
@@ -20,6 +20,7 @@ import type {
   RankedListing,
   UserProfile,
 } from '@hemline/contracts';
+import { brandKeyOf, interleaveByBrand } from './diversity';
 import { hemForUser } from './effective-length';
 import { blendSimilarity } from './embedding';
 import { applyHardFilters, CANDIDATE_CAP } from './filters';
@@ -68,7 +69,8 @@ export interface MatchingPorts {
   /**
    * Return candidate listings for the cheap/SQL-able filter dimensions.
    * The service re-applies the full predicate set (incl. per-user hem and
-   * measurement-based size compat) and the 500-newest cap.
+   * measurement-based size compat) and the 500 cap (source/brand-stratified —
+   * see filters.ts stratifiedCap).
    */
   loadCandidates(filters: HardFilters): Promise<CandidateWithVector[]>;
   /** Optional LLM re-ranker; omit (or have it throw) for deterministic-only. */
@@ -155,6 +157,18 @@ export function createMatchingService(ports: MatchingPorts): MatchingService {
         rerankMode = { mode: 'deterministic', costUsd: null };
       }
     }
+
+    // Brand/source diversity guard (2026-07-09): stable MMR-style interleave
+    // over the scored order — caps same-brand runs at 2, same-brand density at
+    // 6 per 24-item window (⇒ a page shows ≥4 brands whenever the pool has
+    // them), and same-SOURCE density at 12 per window (a store with noisy
+    // brand labels can't take more than half a page). Pure re-ordering
+    // (identical result SET); no-op for single-brand pools (e.g. an explicit
+    // brand filter). Applied before pagination so the interleave is stable
+    // across cursors.
+    items = interleaveByBrand(items, (r) => brandKeyOf(r.listing), {
+      sourceKeyOf: (r) => r.listing.sourceId,
+    });
 
     const offset = decodeCursor(req.cursor);
     const page = items.slice(offset, offset + req.limit);
