@@ -83,6 +83,14 @@ export const listings = sqliteTable(
     lastSeenAt: integer('last_seen_at').notNull(),
     /** soft delete when source drops it */
     removedAt: integer('removed_at'),
+    /**
+     * Additive (2026-07-09, sold-detection): when the verification worker last
+     * CONFIRMED this listing live at the source (single-PDP/product.json
+     * re-check). NULL = never verified. Distinct from last_seen_at, which any
+     * bulk crawl bumps; verified_at is only set on a conclusive per-listing
+     * check. Drives oldest-verified-first rolling batch selection.
+     */
+    verifiedAt: integer('verified_at'),
   },
   (t) => [
     unique().on(t.sourceId, t.sourceListingId),
@@ -332,6 +340,26 @@ export const clickouts = sqliteTable(
     index('idx_clickouts_listing').on(t.listingId),
     index('idx_clickouts_time').on(t.clickedAt),
   ],
+);
+
+/**
+ * Sold/dead-listing verification queue (additive, 2026-07-09 data-eng).
+ * One row per listing awaiting an availability re-check: clickouts enqueue
+ * here (user interest = highest staleness cost) and the scheduler drains the
+ * queue every ~15 min. listing_id is the PK so repeat clicks dedupe to the
+ * earliest pending entry. Rows are deleted after the verification attempt.
+ */
+export const verificationQueue = sqliteTable(
+  'verification_queue',
+  {
+    listingId: text('listing_id')
+      .primaryKey()
+      .references(() => listings.id),
+    /** 'clickout' (user signal) | 'manual' */
+    reason: text('reason').notNull(),
+    enqueuedAt: integer('enqueued_at').notNull(),
+  },
+  (t) => [index('idx_verification_queue_time').on(t.enqueuedAt)],
 );
 
 /** Spec G2: manual extraction-correction log (prompt-tuning audit trail). */

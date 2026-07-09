@@ -10,7 +10,7 @@
  *   without a listing to attribute it to).
  */
 import { ClickoutPostSchema } from '@hemline/contracts';
-import { recordClickout, userExists } from '@hemline/db';
+import { enqueueVerification, recordClickout, userExists } from '@hemline/db';
 import { getDb } from '../lib/db';
 import { fail, ok, serverError, zodFail } from '../lib/envelope';
 import { resolveUserId } from '../lib/session';
@@ -38,6 +38,14 @@ export async function POST(req: Request) {
 
     const recorded = recordClickout(db, parsed.data.listingId, userId);
     if (!recorded) return fail('not_found', `listing ${parsed.data.listingId} not found`, 404);
+    try {
+      // Sold-detection: a click = user interest = highest staleness cost, so
+      // queue this listing for an availability re-check (the ingest scheduler
+      // drains the queue every ~15 min). Never fails the clickout.
+      enqueueVerification(db, parsed.data.listingId, 'clickout');
+    } catch (e) {
+      console.warn('[clickouts] verification enqueue failed (clickout still recorded):', e);
+    }
     return ok({ recorded: true });
   } catch (err) {
     return serverError('clickouts', err);

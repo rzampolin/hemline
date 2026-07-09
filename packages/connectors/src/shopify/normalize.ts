@@ -118,6 +118,48 @@ export function shopifyAttributeHints(p: ShopifyProduct): Partial<ExtractedAttri
 }
 
 /**
+ * Per-variant availability signal, shared by the crawl normalizer and the
+ * sold-detection verification worker (which re-checks a single product's
+ * `/products/{handle}.json`). `hasStockSignal` distinguishes "every variant
+ * carries an explicit available flag" from payload shapes that omit it — the
+ * worker must never infer "sold" from a missing field.
+ */
+export interface ShopifyAvailabilitySignal {
+  /** at least one variant carries an explicit boolean `available` */
+  hasStockSignal: boolean;
+  /** at least one variant is explicitly purchasable */
+  anyAvailable: boolean;
+  /** size labels in variant order (deduped) */
+  sizeLabels: string[];
+  /** size label → in stock (variants sharing a size OR together; missing flag = true) */
+  availability: Record<string, boolean>;
+}
+
+export function shopifyAvailability(p: ShopifyProduct): ShopifyAvailabilitySignal {
+  const variants = Array.isArray(p.variants) ? p.variants : [];
+  const sizeKey = sizeOptionKey(p);
+  const sizeLabels: string[] = [];
+  const availability: Record<string, boolean> = {};
+  for (const v of variants) {
+    let label = sizeKey ? v[sizeKey] : null;
+    if (!label && v.title && v.title !== 'Default Title' && looksLikeSizeLabel(v.title)) {
+      label = v.title;
+    }
+    if (!label) continue;
+    label = label.trim();
+    if (!sizeLabels.includes(label)) sizeLabels.push(label);
+    // multiple variants can share a size (e.g. per color) → in stock if ANY is
+    availability[label] = Boolean(availability[label] || (v.available ?? true));
+  }
+  return {
+    hasStockSignal: variants.some((v) => typeof v.available === 'boolean'),
+    anyAvailable: variants.some((v) => v.available === true),
+    sizeLabels,
+    availability,
+  };
+}
+
+/**
  * Normalize one Shopify product to a RawListing, or null when it is not a
  * dress / not purchasable (no variants).
  */
@@ -129,20 +171,7 @@ export function normalizeShopifyProduct(
   if (!isDressProduct(p)) return null;
   if (!Array.isArray(p.variants) || p.variants.length === 0) return null;
 
-  const sizeKey = sizeOptionKey(p);
-  const sizeLabels: string[] = [];
-  const availability: Record<string, boolean> = {};
-  for (const v of p.variants) {
-    let label = sizeKey ? v[sizeKey] : null;
-    if (!label && v.title && v.title !== 'Default Title' && looksLikeSizeLabel(v.title)) {
-      label = v.title;
-    }
-    if (!label) continue;
-    label = label.trim();
-    if (!sizeLabels.includes(label)) sizeLabels.push(label);
-    // multiple variants can share a size (e.g. per color) → in stock if ANY is
-    availability[label] = Boolean(availability[label] || (v.available ?? true));
-  }
+  const { sizeLabels, availability } = shopifyAvailability(p);
 
   const priced = p.variants
     .map((v) => Number.parseFloat(v.price))

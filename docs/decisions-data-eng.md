@@ -210,3 +210,60 @@ where docs/ARCHITECTURE.md was ambiguous or silent. Contracts were not touched.
     before/after orphan-count integrity check that rolls back on any
     discrepancy. eBay/fixture sources are never touched. Prod:
     `fly ssh console -C "node /app/dist/fix-brands.mjs"` then `… --apply`.
+
+27. **Sold/dead-listing verification (2026-07-09).** Between daily crawls a
+    sold dress stays fully visible; clickouts (spec G4) made the freshness
+    story actionable. A verification worker (`apps/ingest/src/verification.ts`)
+    re-checks small batches per source kind, pure HTTP through the existing
+    politeness stack (politeFetch: HemlineBot UA, ≥1s/host, one 429/5xx
+    retry) — zero AI cost.
+    - **Signals.** *Shopify:* one request to the storefront single-product
+      `{sourceUrl}.js` — live-probed (staud.clothing wells-dress): `.js`
+      carries explicit per-variant `available` booleans and the same
+      options/option1-3 shape as products.json (so the shared
+      `shopifyAvailability` helper, refactored out of
+      `normalizeShopifyProduct`, reads both), while `{sourceUrl}.json` OMITS
+      `available` entirely. A `.js` 404 is confirmed against the `.json`
+      mirror before marking gone (belt against themes disabling `.js`).
+      *JSON-LD:* one PDP fetch through the same `extractListingFromHtml` the
+      crawler uses (microdata fallback included); archived PDPs that keep the
+      Product node but drop the price (decision #16) are marked sold ONLY on
+      an explicit all-OutOfStock offer signal (`explicitStructuredStockSignal`).
+      *eBay/fixtures:* unsupported — Browse API auth / no live source; never
+      selected or enqueued.
+    - **Trigger policy.** (a) Clickout → `verification_queue` (new table,
+      listing_id PK = repeat clicks dedupe; enqueue hook in POST
+      /api/clickouts, isolated so it can never fail the clickout) drained by
+      a `*/15 * * * *` cron (VERIFY_CLICK_CRON, batch VERIFY_QUEUE_BATCH=25)
+      — clicks = user interest = highest staleness cost, verified within
+      ~15 min. (b) Rolling sweep: `0 * * * *` (VERIFY_ROLLING_CRON) verifies
+      VERIFY_ROLLING_BATCH=50 oldest-verified active listings (never-verified
+      first, then oldest `verified_at`) so a ~1.6k-listing catalog cycles in
+      ~1.5 days at ~50 req/h. VERIFY_ENABLE=false kills both jobs. Manual:
+      `npm run verify:listings` / `node /app/dist/verify-listings.mjs`.
+    - **State model.** Verified gone/sold → `removed_at = now` (existing
+      soft-delete; feed/search already exclude removed, saves keep the row
+      for the "possibly sold" rack UX). Size-sold-out → `availability_json`
+      rewritten and `size_normalized_json` re-derived from IN-STOCK labels
+      only (sizes are the feed hard filter); raw `size_labels_json` is never
+      touched — it feeds content_hash (decision #26), and availability is
+      unhashed (decision #9) so the next crawl reconciles cleanly. Verified
+      fine → `verified_at = now` (additive column). Transient errors
+      (network, 429/5xx, unparseable payloads, ambiguous pages) apply NO
+      transition — timeout ≠ sold — and a 3-strike per-host circuit breaker
+      abandons a blocking store for the run (decision #20 pattern); such
+      listings simply come around again in the rolling sweep.
+    - **Rack flag fix (end-to-end flip).** GET /api/saves computed
+      "possibly sold" from `last_seen_at` staleness alone, but a
+      verified-sold listing has a FRESH last_seen_at — `CandidateListing`
+      now carries `removedAt` (db-layer type, frozen contract untouched) and
+      the staleIds filter flags `removed_at IS NOT NULL` independently.
+    - **Live proof (2026-07-09, against a /tmp COPY of prod data — never the
+      real db).** staud wells-dress: stored availability from 2 days prior
+      showed sizes 2/4/6/12 sold out; live verify → `availability_updated`
+      with size 2 back and 4/6/12 out, size_normalized narrowed to
+      [0,2,8,10,14,16]. reformation serafina-silk-dress (JSON-LD): all sizes
+      InStock → `ok`, verified_at bumped, nothing else changed. christydawn
+      adele (oldest unseen): live per-variant map (1X out) matched stored →
+      `ok`. Fabricated dead handle on staud.clothing: real 404 on `.js` AND
+      `.json` → `gone`, removed_at set.

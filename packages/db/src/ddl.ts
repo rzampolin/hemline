@@ -51,6 +51,7 @@ const STATEMENTS = [
     first_seen_at      INTEGER NOT NULL,
     last_seen_at       INTEGER NOT NULL,
     removed_at         INTEGER,
+    verified_at        INTEGER,
     UNIQUE (source_id, source_listing_id)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_listings_last_seen ON listings(last_seen_at)`,
@@ -164,6 +165,12 @@ const STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_clickouts_listing ON clickouts(listing_id)`,
   `CREATE INDEX IF NOT EXISTS idx_clickouts_time ON clickouts(clicked_at)`,
+  `CREATE TABLE IF NOT EXISTS verification_queue (
+    listing_id  TEXT PRIMARY KEY REFERENCES listings(id),
+    reason      TEXT NOT NULL,
+    enqueued_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_verification_queue_time ON verification_queue(enqueued_at)`,
   `CREATE TABLE IF NOT EXISTS extraction_corrections (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     content_hash  TEXT NOT NULL,
@@ -185,6 +192,8 @@ const ADDITIVE_COLUMNS: Array<{ table: string; column: string; ddl: string }> = 
   { table: 'extractions', column: 'length_anchor_height_in', ddl: `ALTER TABLE extractions ADD COLUMN length_anchor_height_in REAL` },
   // Palette-boost toggle (QA P1 #1, 2026-07-08): NULL = enabled.
   { table: 'users', column: 'palette_boost_enabled', ddl: `ALTER TABLE users ADD COLUMN palette_boost_enabled INTEGER` },
+  // Sold-detection (2026-07-09): last conclusive per-listing availability check.
+  { table: 'listings', column: 'verified_at', ddl: `ALTER TABLE listings ADD COLUMN verified_at INTEGER` },
 ];
 
 /** Create all core tables/indexes if absent. Idempotent. */

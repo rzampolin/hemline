@@ -47,6 +47,7 @@ export const INGESTION_DDL = [
     first_seen_at      INTEGER NOT NULL,
     last_seen_at       INTEGER NOT NULL,
     removed_at         INTEGER,
+    verified_at        INTEGER,
     UNIQUE (source_id, source_listing_id)
   )`,
   `CREATE TABLE IF NOT EXISTS listing_images (

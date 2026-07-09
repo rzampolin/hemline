@@ -55,6 +55,13 @@ export interface CandidateListing {
    * scorer needs the same text the SQL LIKE path could see.
    */
   description: string | null;
+  /**
+   * Soft-delete timestamp (additive, 2026-07-09 sold-detection): the frozen
+   * contract `Listing` doesn't carry it, but the saves/rack route needs it —
+   * a verified-sold listing has a FRESH last_seen_at (the crawl saw it hours
+   * ago), so the "possibly sold" flag can't rely on staleness alone.
+   */
+  removedAt: number | null;
 }
 
 function sourceKinds(db: Db): Map<string, string> {
@@ -223,6 +230,7 @@ function toCandidate(
       : {},
     sourceKind: kinds.get(row.sourceId) ?? 'unknown',
     description: row.description ?? null,
+    removedAt: row.removedAt ?? null,
   };
 }
 
