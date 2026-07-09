@@ -134,6 +134,18 @@ describe('matchesHardFilters', () => {
     ).toBe(true);
   });
 
+  it('budget compares non-USD prices via the static FX USD equivalent (QA P1 #3)', () => {
+    // £129.00 = 12900 pence → 12900 × 1.27 = 16383 USD cents
+    const gbp = listing({ priceCents: 12900, currency: 'GBP' });
+    expect(matchesHardFilters(gbp, { priceMaxCents: 16383 })).toBe(true);
+    // raw-cents comparison would (wrongly) pass this — USD-equivalent must not
+    expect(matchesHardFilters(gbp, { priceMaxCents: 15000 })).toBe(false);
+    expect(matchesHardFilters(gbp, { priceMinCents: 16000 })).toBe(true);
+    // unknown currency passes through 1:1 (permissive, never hides)
+    const mystery = listing({ priceCents: 12900, currency: 'JPY' });
+    expect(matchesHardFilters(mystery, { priceMaxCents: 15000 })).toBe(true);
+  });
+
   it('condition / brand (case-insensitive) / color family', () => {
     expect(matchesHardFilters(listing(), { conditions: ['new', 'like_new'] })).toBe(true);
     expect(matchesHardFilters(listing(), { conditions: ['good'] })).toBe(false);

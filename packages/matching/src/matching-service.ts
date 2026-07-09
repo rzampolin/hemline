@@ -111,6 +111,10 @@ export function createMatchingService(ports: MatchingPorts): MatchingService {
     );
 
     const nowMs = now();
+    // Spec D2 global toggle (QA P1 #1): paletteBoostEnabled=false neutralizes
+    // the boost factor (1.0) — a pure re-ordering knob, never a filter, so the
+    // result SET is identical on/off. Absent/undefined = enabled.
+    const paletteOn = profile.paletteBoostEnabled !== false;
     const scored: RankedListing[] = candidates.map((listing) => {
       const hem = hemForProfile(listing, profile);
       const ageDays = Math.max(0, (nowMs - listing.lastSeenAt) / 86_400_000);
@@ -119,7 +123,7 @@ export function createMatchingService(ports: MatchingPorts): MatchingService {
         (listing as CandidateWithVector).attributeVector ?? attributeVectorOf(listing);
       const attrSim = similarity.score(profile.styleTags, vector);
       const sim = blendSimilarity(attrSim, ports.embeddingScore?.(listing) ?? null);
-      const boost = paletteBoost(profile.palette, listing.colors);
+      const boost = paletteOn ? paletteBoost(profile.palette, listing.colors) : 1;
       return {
         listing,
         hem,

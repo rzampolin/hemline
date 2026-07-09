@@ -7,6 +7,7 @@
  * position, measurement-based size compatibility, vintage priors), plus as the
  * source of truth in tests.
  */
+import { toUsdCents } from '@hemline/contracts';
 import type { HardFilters, HemResult, Listing, Silhouette } from '@hemline/contracts';
 import { computeHem } from './effective-length';
 
@@ -130,10 +131,14 @@ export function matchesHardFilters(
   filters: HardFilters,
   ctx?: UserFitContext,
 ): boolean {
-  if (filters.priceMinCents !== undefined && listing.priceCents < filters.priceMinCents) {
+  // Budget bounds are USD cents (spec §3); GBP/EUR listings are compared via
+  // their static-FX USD equivalent (contracts/fx.ts, QA P1 #3) — display
+  // elsewhere stays native-currency.
+  const priceUsdCents = toUsdCents(listing.priceCents, listing.currency);
+  if (filters.priceMinCents !== undefined && priceUsdCents < filters.priceMinCents) {
     return false;
   }
-  if (filters.priceMaxCents !== undefined && listing.priceCents > filters.priceMaxCents) {
+  if (filters.priceMaxCents !== undefined && priceUsdCents > filters.priceMaxCents) {
     return false;
   }
   if (filters.conditions && filters.conditions.length > 0) {

@@ -248,3 +248,56 @@ describe('createMatchingService.rank', () => {
     expect(hem.position).toBe('mid_calf');
   });
 });
+
+/* ── D2 global palette-boost toggle (QA P1 #1, 2026-07-08) ────────────────
+ * paletteBoostEnabled=false must neutralize the boost in the scoring
+ * composition: same result SET (never hides — spec invariant), different
+ * ORDER whenever palette matches exist to boost. */
+describe('paletteBoostEnabled toggle', () => {
+  const palette = [{ hex: '#9CAF88', name: 'sage' }];
+  // Same freshness for both so only the palette boost can separate them.
+  // 'plain' carries a small attribute-similarity edge (cos ≈ 0.2 → sim ≈ 0.6
+  // vs the palette listing's neutral 0.5): smaller than the 1.25× boost
+  // (0.5 × 1.25 = 0.625), so the winner flips with the toggle.
+  const inPalette = Object.assign(
+    listing('in-palette', { colors: [{ name: 'sage', family: 'green', hex: '#9CAF88' }] }),
+    { attributeVector: { 'length:midi': 1 } },
+  );
+  const plain = Object.assign(
+    listing('plain', { colors: [{ name: 'tangerine', family: 'orange', hex: '#F28500' }] }),
+    { attributeVector: { 'length:midi': 1, 'silhouette:wrap': 0.2 } },
+  );
+  const styleTags = { 'silhouette:wrap': 1 };
+
+  async function rankIds(paletteBoostEnabled: boolean | undefined) {
+    const { service } = makeService([inPalette, plain], {
+      user: profile({ palette, styleTags, paletteBoostEnabled }),
+    });
+    const res = await service.rank({ userId: 'user-1', filters: {}, limit: 24, personalize: false });
+    return { ids: res.items.map((i) => i.listing.id), total: res.totalMatched, res };
+  }
+
+  it('boost on vs off: identical result SET, different order', async () => {
+    const on = await rankIds(true);
+    const off = await rankIds(false);
+    expect([...on.ids].sort()).toEqual([...off.ids].sort()); // never hides
+    expect(on.total).toBe(off.total);
+    expect(on.ids).not.toEqual(off.ids); // boost re-orders
+    expect(on.ids[0]).toBe('in-palette'); // 1.25× boost beats the small tag edge
+    expect(off.ids[0]).toBe('plain'); // toggle off → tag similarity decides
+  });
+
+  it('undefined (legacy profiles) behaves as enabled', async () => {
+    const legacy = await rankIds(undefined);
+    const on = await rankIds(true);
+    expect(legacy.ids).toEqual(on.ids);
+  });
+
+  it('toggle off with an empty palette is a no-op (order unchanged)', async () => {
+    const { service } = makeService([inPalette, plain], {
+      user: profile({ palette: [], styleTags, paletteBoostEnabled: false }),
+    });
+    const res = await service.rank({ userId: 'user-1', filters: {}, limit: 24, personalize: false });
+    expect(res.items.map((i) => i.listing.id)).toEqual(['plain', 'in-palette']);
+  });
+});
