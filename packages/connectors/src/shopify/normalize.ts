@@ -7,6 +7,7 @@
  * body_html is stripped to plain text for the description.
  */
 import type { ExtractedAttributes, RawListing } from '@hemline/contracts';
+import { resolveBrand, type BrandStrategyInfo } from '../framework/brand';
 import {
   attributeHintsFromText,
   isDressText,
@@ -52,7 +53,7 @@ export interface ShopifyProduct {
   published_at?: string | null;
 }
 
-export interface ShopifyStoreInfo {
+export interface ShopifyStoreInfo extends BrandStrategyInfo {
   domain: string;
   displayName: string;
   /** presentment currency for USD-less stores (curated; default USD) */
@@ -104,9 +105,15 @@ function sizeOptionKey(p: ShopifyProduct): 'option1' | 'option2' | 'option3' | n
   return null;
 }
 
-/** Pre-fill structured hints from product_type/tags/title (doc §4.1). */
+/**
+ * Pre-fill structured hints from product_type/tags/title (doc §4.1) — plus
+ * the vendor string, which single-brand stores use for collection/season
+ * labels (brand.ts demotes it from the brand to an attribute hint).
+ */
 export function shopifyAttributeHints(p: ShopifyProduct): Partial<ExtractedAttributes> {
-  const haystack = [p.product_type ?? '', tagList(p.tags).join(' '), p.title].join(' ');
+  const haystack = [p.product_type ?? '', tagList(p.tags).join(' '), p.title, p.vendor ?? ''].join(
+    ' ',
+  );
   return attributeHintsFromText(haystack);
 }
 
@@ -165,7 +172,9 @@ export function normalizeShopifyProduct(
     // "<b>DREAM</b> Thelma Dress") — strip it or the UI renders literal tags.
     title: stripHtml(p.title).trim(),
     ...(description ? { description } : {}),
-    brand: stripHtml(p.vendor ?? '').trim() || store.displayName,
+    // vendor is NOT trusted as the brand: single-brand stores abuse it for
+    // season codes / collection labels (framework/brand.ts has the catalog)
+    brand: resolveBrand(stripHtml(p.vendor ?? '').trim(), store),
     priceCents: Math.round(price * 100),
     currency: store.currency ?? 'USD',
     imageUrls,

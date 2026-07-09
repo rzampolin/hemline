@@ -2,6 +2,8 @@
   {
     "domain": "thereformation.com",
     "displayName": "Reformation",
+    "brandName": "Reformation",
+    "brandMode": "single",
     "productUrlPattern": "thereformation\\.com/products/[^/]*dress[^/]*/",
     "verified": true,
     "notes": "probed 2026-07-07: SFCC. robots→sitemap_index.xml→sitemap_0-product.xml (~2.9k products, ~1k dress URLs). Per-size Offers with size/color/availability/USD price. Sizes numeric (000–012). Descriptions short; no length text in JSON-LD (AI pipeline estimates from image)."
@@ -9,6 +11,8 @@
   {
     "domain": "lulus.com",
     "displayName": "Lulus",
+    "brandName": "Lulus",
+    "brandMode": "multi",
     "sitemapUrl": "https://www.lulus.com/products/sitemap.xml",
     "productUrlPattern": "lulus\\.com/products/.*dress",
     "verified": true,
@@ -17,6 +21,8 @@
   {
     "domain": "madewell.com",
     "displayName": "Madewell",
+    "brandName": "Madewell",
+    "brandMode": "multi",
     "productUrlPattern": "madewell\\.com/p/.*dress",
     "verified": true,
     "notes": "probed 2026-07-07: SFCC. sitemap_index→…product.xml (~2.6k products). Single Offer, USD, no sizes in JSON-LD. Dress PDPs carry /dresses-skirts/ category path — downstream dress filter removes the skirts."
@@ -24,6 +30,8 @@
   {
     "domain": "whistles.com",
     "displayName": "Whistles",
+    "brandName": "Whistles",
+    "brandMode": "single",
     "currency": "GBP",
     "productUrlPattern": "whistles\\.com/product/.*dress",
     "verified": true,
@@ -32,6 +40,8 @@
   {
     "domain": "forloveandlemons.com",
     "displayName": "For Love & Lemons",
+    "brandName": "For Love & Lemons",
+    "brandMode": "single",
     "productUrlPattern": "forloveandlemons\\.com/products/.*dress",
     "priceDivisor": 100,
     "verified": true,
@@ -40,6 +50,8 @@
   {
     "domain": "realisationpar.com",
     "displayName": "Réalisation Par",
+    "brandName": "Réalisation Par",
+    "brandMode": "single",
     "sitemapUrl": "https://realisationpar.com/xmlsitemap.php",
     "productUrlPattern": "realisationpar\\.com/[^/]+/$",
     "verified": true,
@@ -48,6 +60,8 @@
   {
     "domain": "houseofcb.com",
     "displayName": "House of CB",
+    "brandName": "House of CB",
+    "brandMode": "single",
     "productUrlPattern": "houseofcb\\.com/.*dress",
     "verified": false,
     "notes": "probed 2026-07-07: custom Next.js storefront. No Sitemap: line in robots.txt; /sitemap.xml and common variants serve the SPA homepage HTML. No sitemap → no discovery path."
@@ -55,6 +69,8 @@
   {
     "domain": "jcrew.com",
     "displayName": "J.Crew",
+    "brandName": "J.Crew",
+    "brandMode": "single",
     "productUrlPattern": "jcrew\\.com/p/womens/.*dress",
     "verified": false,
     "notes": "probed 2026-07-07: ProductGroup JSON-LD present but offers/price are server-rendered inconsistently — a girls' PDP had price, the women's dress checked had hasVariant:[] and no offers. Revisit; may work for a subset."
@@ -62,6 +78,8 @@
   {
     "domain": "aritzia.com",
     "displayName": "Aritzia",
+    "brandName": "Aritzia",
+    "brandMode": "multi",
     "sitemapUrl": "https://www.aritzia.com/us/en/sitemap_index.xml",
     "productUrlPattern": "aritzia\\.com/.*/product/.*dress",
     "verified": false,
@@ -70,6 +88,8 @@
   {
     "domain": "ba-sh.com",
     "displayName": "ba&sh",
+    "brandName": "ba&sh",
+    "brandMode": "single",
     "sitemapUrl": "https://ba-sh.com/us/en/sitemap-0-product-en_US.xml",
     "productUrlPattern": "ba-sh\\.com/us/p/dress-",
     "verified": false,
@@ -78,6 +98,8 @@
   {
     "domain": "zimmermann.com",
     "displayName": "Zimmermann",
+    "brandName": "Zimmermann",
+    "brandMode": "single",
     "productUrlPattern": "zimmermann\\.com/.*dress",
     "verified": false,
     "notes": "probed 2026-07-07: Magento. Locale sitemaps mix category and product URLs with no distinguishing product pattern; the dress-keyword URLs sampled were category pages with zero JSON-LD blocks."
@@ -85,6 +107,8 @@
   {
     "domain": "anthropologie.com",
     "displayName": "Anthropologie",
+    "brandName": "Anthropologie",
+    "brandMode": "multi",
     "productUrlPattern": "anthropologie\\.com/shop/.*dress",
     "verified": false,
     "notes": "probed 2026-07-07: URBN platform — robots.txt itself returns 403 (bot-blocked). Do not crawl."
@@ -92,6 +116,8 @@
   {
     "domain": "freepeople.com",
     "displayName": "Free People",
+    "brandName": "Free People",
+    "brandMode": "multi",
     "productUrlPattern": "freepeople\\.com/shop/.*dress",
     "verified": false,
     "notes": "probed 2026-07-07: URBN platform — 403 bot-blocked, same as Anthropologie."
@@ -99,6 +125,8 @@
   {
     "domain": "stories.com",
     "displayName": "& Other Stories",
+    "brandName": "& Other Stories",
+    "brandMode": "single",
     "productUrlPattern": "stories\\.com/.*dress",
     "verified": false,
     "notes": "probed 2026-07-07: H&M group — 403 bot-blocked at robots.txt."
@@ -106,6 +134,8 @@
   {
     "domain": "shop.mango.com",
     "displayName": "Mango",
+    "brandName": "Mango",
+    "brandMode": "single",
     "productUrlPattern": "shop\\.mango\\.com/.*dress",
     "verified": false,
     "notes": "probed 2026-07-07: 403 bot-blocked at robots.txt."
@@ -113,6 +143,8 @@
   {
     "domain": "reiss.com",
     "displayName": "Reiss",
+    "brandName": "Reiss",
+    "brandMode": "single",
     "productUrlPattern": "reiss\\.com/.*/style/",
     "verified": false,
     "notes": "probed 2026-07-07: sitemaps reachable (gzipped, per-locale) but PDPs return 403 to bots."
@@ -120,6 +152,8 @@
   {
     "domain": "sezane.com",
     "displayName": "Sézane",
+    "brandName": "Sézane",
+    "brandMode": "single",
     "productUrlPattern": "sezane\\.com/.*dress",
     "verified": false,
     "notes": "known bot-blocker (403 on 2026-07-06 Shopify-track probe) — skipped by design, no new requests sent."
@@ -127,6 +161,8 @@
   {
     "domain": "hellomolly.com",
     "displayName": "Hello Molly",
+    "brandName": "Hello Molly",
+    "brandMode": "single",
     "productUrlPattern": "hellomolly\\.com/products/.*dress",
     "verified": false,
     "notes": "known bot-blocker (403 on 2026-07-06 Shopify-track probe) — skipped by design, no new requests sent."

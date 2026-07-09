@@ -318,3 +318,49 @@ describe('sizesFromAdditionalProperty', () => {
     expect(sizesFromAdditionalProperty(undefined)).toEqual([]);
   });
 });
+
+describe('per-store brand strategy (schema.org brand has the same junk exposure)', () => {
+  const slipDress = (brand?: string): object => ({
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: 'Slip Dress',
+    ...(brand ? { brand } : {}),
+    offers: { '@type': 'Offer', price: '99.00', priceCurrency: 'USD' },
+  });
+
+  it('multi-brand stores (lulus.com) preserve genuine third-party brands', () => {
+    const lulus: JsonldStoreInfo = {
+      domain: 'lulus.com',
+      displayName: 'Lulus',
+      brandName: 'Lulus',
+      brandMode: 'multi',
+      productUrlPattern: 'lulus\\.com/products/',
+    };
+    const url = 'https://www.lulus.com/products/red-slip-dress/123.html';
+    const keep = extractListingFromHtml(page(slipDress('Free People')), lulus, url, SEEN_AT);
+    expect(keep.listing?.brand).toBe('Free People');
+    // …but a junk code still falls back to the canonical store brand
+    const junk = extractListingFromHtml(page(slipDress('LU123')), lulus, url, SEEN_AT);
+    expect(junk.listing?.brand).toBe('Lulus');
+    const missing = extractListingFromHtml(page(slipDress()), lulus, url, SEEN_AT);
+    expect(missing.listing?.brand).toBe('Lulus');
+  });
+
+  it('single-brand stores force the canonical brand over whatever the theme ships', () => {
+    const reformation: JsonldStoreInfo = {
+      domain: 'thereformation.com',
+      displayName: 'Reformation',
+      brandName: 'Reformation',
+      brandMode: 'single',
+      productUrlPattern: 'thereformation\\.com/products/',
+    };
+    const url = 'https://www.thereformation.com/products/slip-dress/1.html';
+    const forced = extractListingFromHtml(
+      page(slipDress('REF SPRING 2026 SALE')),
+      reformation,
+      url,
+      SEEN_AT,
+    );
+    expect(forced.listing?.brand).toBe('Reformation');
+  });
+});

@@ -1,52 +1,236 @@
 [
-  { "domain": "staud.clothing", "displayName": "STAUD", "verified": true },
-  { "domain": "us.rouje.com", "displayName": "Rouje", "verified": true },
-  { "domain": "shopdoen.com", "displayName": "Dôen", "verified": true },
-  { "domain": "withjean.com", "displayName": "With Jéan", "verified": true },
-  { "domain": "faithfullthebrand.com", "displayName": "Faithfull the Brand", "verified": true },
-  { "domain": "christydawn.com", "displayName": "Christy Dawn", "verified": true },
-  { "domain": "rixo.co.uk", "displayName": "RIXO", "verified": true, "currency": "GBP" },
-  { "domain": "petalandpup.com", "displayName": "Petal & Pup", "verified": true },
-  { "domain": "hillhousehome.com", "displayName": "Hill House Home", "verified": true },
-  { "domain": "loveshackfancy.com", "displayName": "LoveShackFancy", "verified": true },
-  { "domain": "sisterjane.com", "displayName": "Sister Jane", "verified": true, "currency": "GBP" },
-  { "domain": "selkiecollection.com", "displayName": "Selkie", "verified": true },
-  { "domain": "ohpolly.com", "displayName": "Oh Polly", "verified": true },
-  { "domain": "meshki.us", "displayName": "MESHKI", "verified": true },
-  { "domain": "motelrocks.com", "displayName": "Motel Rocks", "verified": true },
-  { "domain": "dissh.com", "displayName": "DISSH", "verified": true },
-  { "domain": "farmrio.com", "displayName": "FARM Rio", "verified": true },
-  { "domain": "batsheva.com", "displayName": "Batsheva", "verified": true },
-  { "domain": "the-sleeper.com", "displayName": "Sleeper", "verified": true },
-  { "domain": "ciaolucia.com", "displayName": "Ciao Lucia", "verified": true },
-  { "domain": "cultgaia.com", "displayName": "Cult Gaia", "verified": true },
-  { "domain": "ratandboa.com", "displayName": "Rat & Boa", "verified": true },
-  { "domain": "kitristudio.com", "displayName": "KITRI", "verified": true, "currency": "GBP" },
+  {
+    "domain": "staud.clothing",
+    "displayName": "STAUD",
+    "brandName": "STAUD",
+    "brandMode": "single",
+    "verified": true,
+    "note": "vendor = collection labels ('STAUD FALL 2023', 'STAUD HOLIDAY SALE 2024') — never a brand"
+  },
+  {
+    "domain": "us.rouje.com",
+    "displayName": "Rouje",
+    "brandName": "Rouje",
+    "brandMode": "single",
+    "verified": true,
+    "note": "vendor = collection names ('La Madrague', 'Cadaqués', 'Venezia') — never a brand"
+  },
+  {
+    "domain": "shopdoen.com",
+    "displayName": "Dôen",
+    "brandName": "Dôen",
+    "brandMode": "single",
+    "verified": true,
+    "note": "vendor 'DOEN' (unaccented) — brandName wins for facet consistency"
+  },
+  {
+    "domain": "withjean.com",
+    "displayName": "With Jéan",
+    "brandName": "With Jéan",
+    "brandMode": "single",
+    "verified": true
+  },
+  {
+    "domain": "faithfullthebrand.com",
+    "displayName": "Faithfull the Brand",
+    "brandName": "Faithfull the Brand",
+    "brandMode": "single",
+    "verified": true,
+    "note": "vendor carries collab labels ('MONIKH x FAITHFULL', 'Net-a-Porter x FAITHFULL') — still Faithfull"
+  },
+  {
+    "domain": "christydawn.com",
+    "displayName": "Christy Dawn",
+    "brandName": "Christy Dawn",
+    "brandMode": "single",
+    "verified": true,
+    "note": "vendor = internal season codes (SP26B, F24A, PF25, U25B, BF24B) or the manufacturer legal entity — never a brand"
+  },
+  {
+    "domain": "rixo.co.uk",
+    "displayName": "RIXO",
+    "brandName": "RIXO",
+    "brandMode": "single",
+    "verified": true,
+    "currency": "GBP",
+    "note": "vendor ships decorated/mojibake variants ('RIXO ⋆', 'RIXO â‹†') — brandName wins"
+  },
+  {
+    "domain": "petalandpup.com",
+    "displayName": "Petal & Pup",
+    "brandName": "Petal & Pup",
+    "brandMode": "single",
+    "verified": true,
+    "note": "vendor = internal drop codes (PUP3…PUP139, lowercase 'pup129') — never a brand"
+  },
+  {
+    "domain": "hillhousehome.com",
+    "displayName": "Hill House Home",
+    "brandName": "Hill House Home",
+    "brandMode": "single",
+    "verified": true
+  },
+  {
+    "domain": "loveshackfancy.com",
+    "displayName": "LoveShackFancy",
+    "brandName": "LoveShackFancy",
+    "brandMode": "single",
+    "verified": true
+  },
+  {
+    "domain": "sisterjane.com",
+    "displayName": "Sister Jane",
+    "brandName": "Sister Jane",
+    "brandMode": "single",
+    "knownBrands": ["Ghospell"],
+    "verified": true,
+    "currency": "GBP",
+    "note": "vendor = collection names ('DREAM Voyage Voyage', 'Secrets The Water Keeps'; probed live 2026-07-09). Ghospell is a genuinely distinct label sold here ('Playback by Ghospell' → Ghospell); DREAM/Menswear are Sister Jane's own lines"
+  },
+  {
+    "domain": "selkiecollection.com",
+    "displayName": "Selkie",
+    "brandName": "Selkie",
+    "brandMode": "single",
+    "verified": true
+  },
+  {
+    "domain": "ohpolly.com",
+    "displayName": "Oh Polly",
+    "brandName": "Oh Polly",
+    "brandMode": "single",
+    "knownBrands": ["Bo+Tee"],
+    "verified": true,
+    "note": "Bo+Tee is Oh Polly's distinct activewear label sold on the same storefront; 'Oh Polly Swim' etc collapse to Oh Polly"
+  },
+  {
+    "domain": "meshki.us",
+    "displayName": "MESHKI",
+    "brandName": "MESHKI",
+    "brandMode": "single",
+    "verified": true
+  },
+  {
+    "domain": "motelrocks.com",
+    "displayName": "Motel Rocks",
+    "brandName": "Motel Rocks",
+    "brandMode": "single",
+    "verified": true
+  },
+  {
+    "domain": "dissh.com",
+    "displayName": "DISSH",
+    "brandName": "DISSH",
+    "brandMode": "single",
+    "verified": true
+  },
+  {
+    "domain": "farmrio.com",
+    "displayName": "FARM Rio",
+    "brandName": "FARM Rio",
+    "brandMode": "single",
+    "verified": true
+  },
+  {
+    "domain": "batsheva.com",
+    "displayName": "Batsheva",
+    "brandName": "Batsheva",
+    "brandMode": "single",
+    "verified": true
+  },
+  {
+    "domain": "the-sleeper.com",
+    "displayName": "Sleeper",
+    "brandName": "Sleeper",
+    "brandMode": "single",
+    "verified": true
+  },
+  {
+    "domain": "ciaolucia.com",
+    "displayName": "Ciao Lucia",
+    "brandName": "Ciao Lucia",
+    "brandMode": "single",
+    "verified": true
+  },
+  {
+    "domain": "cultgaia.com",
+    "displayName": "Cult Gaia",
+    "brandName": "Cult Gaia",
+    "brandMode": "single",
+    "verified": true
+  },
+  {
+    "domain": "ratandboa.com",
+    "displayName": "Rat & Boa",
+    "brandName": "Rat & Boa",
+    "brandMode": "single",
+    "verified": true
+  },
+  {
+    "domain": "kitristudio.com",
+    "displayName": "KITRI",
+    "brandName": "KITRI",
+    "brandMode": "single",
+    "verified": true,
+    "currency": "GBP"
+  },
   {
     "domain": "neverfullydressed.com",
     "displayName": "Never Fully Dressed",
+    "brandName": "Never Fully Dressed",
+    "brandMode": "single",
     "verified": true,
     "currency": "GBP"
   },
   {
     "domain": "nobodyschild.com",
     "displayName": "Nobody's Child",
+    "brandName": "Nobody's Child",
+    "brandMode": "single",
     "verified": true,
     "currency": "GBP"
   },
   {
     "domain": "damsonmadder.com",
     "displayName": "Damson Madder",
+    "brandName": "Damson Madder",
+    "brandMode": "single",
     "verified": true,
     "currency": "GBP"
   },
-  { "domain": "misalosangeles.com", "displayName": "MISA Los Angeles", "verified": true },
-  { "domain": "sirthelabel.com", "displayName": "SIR.", "verified": true },
-  { "domain": "ajeworld.com", "displayName": "Aje", "verified": true },
-  { "domain": "becandbridge.com", "displayName": "Bec + Bridge", "verified": true },
+  {
+    "domain": "misalosangeles.com",
+    "displayName": "MISA Los Angeles",
+    "brandName": "MISA Los Angeles",
+    "brandMode": "single",
+    "verified": true
+  },
+  {
+    "domain": "sirthelabel.com",
+    "displayName": "SIR.",
+    "brandName": "SIR.",
+    "brandMode": "single",
+    "verified": true
+  },
+  {
+    "domain": "ajeworld.com",
+    "displayName": "Aje",
+    "brandName": "Aje",
+    "brandMode": "single",
+    "verified": true
+  },
+  {
+    "domain": "becandbridge.com",
+    "displayName": "Bec + Bridge",
+    "brandName": "Bec + Bridge",
+    "brandMode": "single",
+    "verified": true
+  },
   {
     "domain": "needleandthread.com",
     "displayName": "Needle & Thread",
+    "brandName": "Needle & Thread",
+    "brandMode": "single",
     "verified": true,
     "currency": "GBP",
     "note": "probed 2026-07-07 during JSON-LD candidate research: products.json open (Shopify), ~400 dress URLs in sitemap"
@@ -54,72 +238,96 @@
   {
     "domain": "veronicabeard.com",
     "displayName": "Veronica Beard",
+    "brandName": "Veronica Beard",
+    "brandMode": "single",
     "verified": true,
     "note": "probed 2026-07-07 during JSON-LD candidate research: products.json open (Shopify)"
   },
   {
     "domain": "thereformation.com",
     "displayName": "Reformation",
+    "brandName": "Reformation",
+    "brandMode": "single",
     "verified": false,
     "note": "probed 2026-07-06: HTTP 404 — not a Shopify storefront (custom platform)"
   },
   {
     "domain": "realisationpar.com",
     "displayName": "Réalisation Par",
+    "brandName": "Réalisation Par",
+    "brandMode": "single",
     "verified": false,
     "note": "probed 2026-07-06: HTTP 404 — products.json disabled"
   },
   {
     "domain": "houseofcb.com",
     "displayName": "House of CB",
+    "brandName": "House of CB",
+    "brandMode": "single",
     "verified": false,
     "note": "probed 2026-07-06: HTTP 404 — products.json disabled"
   },
   {
     "domain": "forloveandlemons.com",
     "displayName": "For Love & Lemons",
+    "brandName": "For Love & Lemons",
+    "brandMode": "single",
     "verified": false,
     "note": "probed 2026-07-06: HTTP 404 — products.json disabled"
   },
   {
     "domain": "sezane.com",
     "displayName": "Sézane",
+    "brandName": "Sézane",
+    "brandMode": "single",
     "verified": false,
     "note": "probed 2026-07-06: HTTP 403 — bot-blocked"
   },
   {
     "domain": "ganni.com",
     "displayName": "GANNI",
+    "brandName": "GANNI",
+    "brandMode": "single",
     "verified": false,
     "note": "probed 2026-07-06: connection failed"
   },
   {
     "domain": "hellomolly.com",
     "displayName": "Hello Molly",
+    "brandName": "Hello Molly",
+    "brandMode": "single",
     "verified": false,
     "note": "probed 2026-07-06: HTTP 403 — bot-blocked"
   },
   {
     "domain": "shoprhode.com",
     "displayName": "RHODE",
+    "brandName": "RHODE",
+    "brandMode": "single",
     "verified": false,
     "note": "probed 2026-07-06: HTTP 402 — storefront unavailable"
   },
   {
     "domain": "spell.co",
     "displayName": "Spell",
+    "brandName": "Spell",
+    "brandMode": "single",
     "verified": false,
     "note": "not yet probed"
   },
   {
     "domain": "augustethelabel.com",
     "displayName": "Auguste the Label",
+    "brandName": "Auguste the Label",
+    "brandMode": "single",
     "verified": false,
     "note": "not yet probed"
   },
   {
     "domain": "fillyboo.com",
     "displayName": "Fillyboo",
+    "brandName": "Fillyboo",
+    "brandMode": "single",
     "verified": false,
     "note": "not yet probed"
   }

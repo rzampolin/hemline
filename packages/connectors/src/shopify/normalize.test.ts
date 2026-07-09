@@ -101,6 +101,75 @@ describe('shopifyAttributeHints', () => {
   });
 });
 
+describe('per-store brand strategy (prod junk-vendor bug, 2026-07-09)', () => {
+  const dress = (vendor: string): ShopifyProduct => ({
+    id: 1,
+    title: 'Nightingale Midi Dress',
+    handle: 'nightingale-midi-dress',
+    vendor,
+    product_type: 'Dresses',
+    variants: [
+      { id: 11, title: 'S', option1: 'S', option2: null, option3: null, available: true, price: '128.00' },
+    ],
+    options: [{ name: 'Size', position: 1 }],
+  });
+
+  it('single-brand stores always emit the canonical brand (vendor = season code)', () => {
+    const christy = {
+      domain: 'christydawn.com',
+      displayName: 'Christy Dawn',
+      brandName: 'Christy Dawn',
+      brandMode: 'single' as const,
+    };
+    for (const junk of ['SP23', 'SP26B', 'F24A', 'OSHADI COLLECTIVE (OPC) PRIVATE LIMITED']) {
+      expect(normalizeShopifyProduct(dress(junk), christy, SEEN_AT)!.brand).toBe('Christy Dawn');
+    }
+  });
+
+  it('single-brand stores always emit the canonical brand (vendor = collection label)', () => {
+    const staud = {
+      domain: 'staud.clothing',
+      displayName: 'STAUD',
+      brandName: 'STAUD',
+      brandMode: 'single' as const,
+    };
+    expect(normalizeShopifyProduct(dress('STAUD FALL 2023'), staud, SEEN_AT)!.brand).toBe('STAUD');
+    expect(normalizeShopifyProduct(dress('STAUD HOLIDAY SALE 2024'), staud, SEEN_AT)!.brand).toBe(
+      'STAUD',
+    );
+
+    const pup = {
+      domain: 'petalandpup.com',
+      displayName: 'Petal & Pup',
+      brandName: 'Petal & Pup',
+      brandMode: 'single' as const,
+    };
+    expect(normalizeShopifyProduct(dress('PUP129'), pup, SEEN_AT)!.brand).toBe('Petal & Pup');
+    expect(normalizeShopifyProduct(dress('pup129'), pup, SEEN_AT)!.brand).toBe('Petal & Pup');
+  });
+
+  it('knownBrands keep Ghospell distinct on sisterjane.com; collections collapse', () => {
+    const sisterjane = {
+      domain: 'sisterjane.com',
+      displayName: 'Sister Jane',
+      brandName: 'Sister Jane',
+      brandMode: 'single' as const,
+      knownBrands: ['Ghospell'],
+    };
+    expect(normalizeShopifyProduct(dress('Playback by Ghospell'), sisterjane, SEEN_AT)!.brand).toBe(
+      'Ghospell',
+    );
+    expect(normalizeShopifyProduct(dress('DREAM Voyage Voyage'), sisterjane, SEEN_AT)!.brand).toBe(
+      'Sister Jane',
+    );
+  });
+
+  it('the demoted vendor still feeds attribute hints (single-brand stores)', () => {
+    const hints = shopifyAttributeHints(dress('Linen Bridal SP26B'));
+    expect(hints.fabric).toBe('linen');
+  });
+});
+
 describe('stripHtml', () => {
   it('drops tags, decodes entities, and collapses whitespace', () => {
     expect(stripHtml('<p>Hello &amp; <strong>world</strong></p><p>bye</p>')).toBe(

@@ -13,6 +13,7 @@
  * realisationpar.com (BigCommerce). JSON-LD stays preferred when both exist.
  */
 import type { RawListing } from '@hemline/contracts';
+import { resolveBrand, type BrandStrategyInfo } from '../framework/brand';
 import {
   attributeHintsFromText,
   isDressText,
@@ -37,7 +38,7 @@ import {
 import { extractMicrodata } from './microdata';
 import { decodeXmlEntities } from './sitemap';
 
-export interface JsonldStoreInfo {
+export interface JsonldStoreInfo extends BrandStrategyInfo {
   domain: string;
   displayName: string;
   /** override discovery (robots.txt Sitemap: lines → /sitemap.xml fallback) */
@@ -213,8 +214,15 @@ export function normalizeJsonldProduct(
   const description = rawDescription ? cleanDescription(rawDescription) : undefined;
   const hints = attributeHintsFromText(`${cleanTitle} ${category}`);
 
+  // schema.org brand has the same junk exposure as Shopify's vendor (themes
+  // ship categories, collection labels, internal codes) — category-ish
+  // strings are dropped first, then the store's brand strategy decides
+  // (framework/brand.ts: 'single' → brandName, 'multi' → vendor unless junk).
   const rawBrand = brandName(node.brand);
-  const brand = rawBrand && !GENERIC_BRAND_RE.test(rawBrand) ? rawBrand : store.displayName;
+  const brand = resolveBrand(
+    rawBrand && !GENERIC_BRAND_RE.test(rawBrand) ? rawBrand : null,
+    store,
+  );
 
   return {
     sourceId: `jsonld:${store.domain}`,

@@ -1,3 +1,4 @@
+export * from './framework/brand';
 export * from './framework/registry';
 export * from './framework/politeness';
 export * from './framework/dress-heuristics';
