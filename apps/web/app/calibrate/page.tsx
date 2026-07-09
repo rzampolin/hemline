@@ -24,29 +24,9 @@ import { api } from '../../lib/api';
 import { useProfile } from '../../lib/profile-store';
 import { resolveImage } from '../../lib/img';
 import { KEYS, readLocal, writeLocal } from '../../lib/local';
-
-const DECK_SIZE = 12;
-
-/** Diversity-sample the deck across length/silhouette/color so swipes carry signal. */
-function sampleDeck(items: RankedListing[], n: number): RankedListing[] {
-  const picked: RankedListing[] = [];
-  const seen = new Set<string>();
-  const pool = [...items];
-  while (picked.length < n && pool.length > 0) {
-    let idx = pool.findIndex((it) => {
-      const key = `${it.listing.lengthClass}|${it.listing.silhouette}|${it.listing.colors[0]?.family}`;
-      return !seen.has(key);
-    });
-    if (idx === -1) {
-      seen.clear();
-      idx = 0;
-    }
-    const [it] = pool.splice(idx, 1);
-    seen.add(`${it.listing.lengthClass}|${it.listing.silhouette}|${it.listing.colors[0]?.family}`);
-    picked.push(it);
-  }
-  return picked;
-}
+// Diversity sampling across brand AND silhouette/length/color — extracted to
+// lib/deck.ts (unit-tested) after the 2026-07-09 brand-monoculture fix.
+import { DECK_SIZE, sampleDeck } from '../../lib/deck';
 
 export default function CalibratePage() {
   const router = useRouter();
