@@ -163,9 +163,17 @@ function parseBudget(raw: string | undefined): number {
 
 /**
  * Does this API failure mean "the API could not fetch a url-sourced file we
- * referenced" (seen live 2026-07: 400 invalid_request_error "Unable to
- * download the file. Please verify the URL and try again." on some
- * Reformation Cloudinary image URLs)?
+ * referenced"? Two phrasings seen live so far (both 400 invalid_request_error
+ * on listing image URLs):
+ *   - "Unable to download the file. Please verify the URL and try again."
+ *     (2026-07, Reformation Cloudinary URLs)
+ *   - "The request timed out while trying to download the file. Please try
+ *     again later." (2026-07, prod — the old verb-anchored regex missed it
+ *     and the listing fell back to mock)
+ * The API rewords these freely, so the detector matches SEMANTICS, not one
+ * phrasing: a 400/invalid_request_error whose text (a) is about
+ * downloading/fetching/retrieving a file/url/image and (b) reads as a
+ * failure (unable/failed/cannot/timed out/error…), in either order.
  *
  * Accepts both thrown SDK APIErrors and Message Batches `errored` result
  * payloads ({ type: 'error', error: { type, message } }). The listing itself
@@ -183,10 +191,17 @@ export function isImageUrlDownloadError(err: unknown): boolean {
     // circular error payload — match on message alone
   }
   const invalidRequest = e.status === 400 || /invalid_request_error/i.test(text);
-  return (
-    invalidRequest &&
-    /(unable\s+to|failed\s+to|could\s+not|cannot)\s+(download|fetch|retrieve)[\s\S]{0,120}(file|url|image)/i.test(
+  if (!invalidRequest) return false;
+  const aboutDownloadingAFile =
+    /\b(download(?:ing|ed)?|fetch(?:ing|ed)?|retriev(?:e|ed|ing|al))\b[\s\S]{0,120}\b(file|url|image)s?\b/i.test(
       text,
-    )
-  );
+    ) ||
+    /\b(file|url|image)s?\b[\s\S]{0,120}\b(download(?:ing|ed)?|fetch(?:ing|ed)?|retriev(?:e|ed|ing|al))\b/i.test(
+      text,
+    );
+  const readsAsFailure =
+    /\b(unable|failed|failure|error|could\s*not|couldn'?t|cannot|can'?t|timed?[\s-]?out)\b/i.test(
+      text,
+    );
+  return aboutDownloadingAFile && readsAsFailure;
 }

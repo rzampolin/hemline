@@ -183,6 +183,34 @@ describe('isImageUrlDownloadError', () => {
     ).toBe(true);
   });
 
+  it('matches the timed-out phrasing seen in prod (fell back to mock before the fix)', () => {
+    const err = new Error(
+      '400 {"type":"error","error":{"type":"invalid_request_error","message":' +
+        '"The request timed out while trying to download the file. Please try again later."}}',
+    );
+    (err as Error & { status: number }).status = 400;
+    expect(isImageUrlDownloadError(err)).toBe(true);
+    // and as a Message Batches errored payload
+    expect(
+      isImageUrlDownloadError({
+        type: 'error',
+        error: {
+          type: 'invalid_request_error',
+          message:
+            'The request timed out while trying to download the file. Please try again later.',
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it('matches reworded download-failure semantics (verb/noun in either order)', () => {
+    const reworded = new Error(
+      '400 invalid_request_error: The image at the provided URL could not be fetched.',
+    );
+    (reworded as Error & { status: number }).status = 400;
+    expect(isImageUrlDownloadError(reworded)).toBe(true);
+  });
+
   it('does not match other 400s, overloads, or non-errors', () => {
     const other400 = new Error('400 invalid_request_error: max_tokens too large');
     (other400 as Error & { status: number }).status = 400;
