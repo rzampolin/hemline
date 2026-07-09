@@ -67,6 +67,7 @@ export async function POST(req: Request) {
         limit: Math.min(request.limit, 100),
         cursor: request.cursor,
         personalize,
+        lexicalTerms: f.lexicalTerms,
       },
     );
     return ok(response);

@@ -45,6 +45,7 @@ import type {
   UserProfile,
 } from '@hemline/contracts';
 import { makeEmbeddingScorePort } from './embeddings';
+import { buildSearchPlan, type SearchPlan } from './search';
 
 // ── shared AI client (one cost meter / budget ledger per process) ─────────
 
@@ -106,6 +107,15 @@ export interface RankOptions {
   limit: number;
   cursor?: string;
   personalize: boolean;
+  /**
+   * Hybrid query interpretation (2026-07-09, docs/decisions-search.md).
+   * Default ON when `query` is present: stage-1 deterministic mapping +
+   * optional Haiku enrichment + optional semantic embedding replace the old
+   * token-AND LIKE gate. `false` → legacy lexical-only LIKE behavior.
+   */
+  interpretQuery?: boolean;
+  /** query terms the user un-chipped — kept lexical, never interpreted */
+  lexicalTerms?: string[];
 }
 
 /**
@@ -143,9 +153,52 @@ export async function rankForUser(
   serviceFilters: Pick<HardFilters, 'lengthOnBody'>,
   opts: RankOptions,
 ): Promise<RankResponse> {
+  // ── hybrid free-text interpretation (stages 1–3, decisions-search.md) ────
+  // Explicit filter params bypass this entirely — only `query` is interpreted,
+  // and query-derived hard filters never override an explicit one.
+  const query = sqlOptions.query?.trim();
+  let plan: SearchPlan | null = null;
+  let candidateOptions: CandidateSqlOptions = sqlOptions;
+  if (query && opts.interpretQuery !== false) {
+    plan = await buildSearchPlan(db, query, {
+      lexicalTerms: opts.lexicalTerms,
+      explicit: {
+        price: sqlOptions.priceMinCents != null || sqlOptions.priceMaxCents != null,
+        sizes: (sqlOptions.sizesNormalized?.length ?? 0) > 0,
+        lengthClasses: (sqlOptions.lengthClasses?.length ?? 0) > 0,
+        brands: (sqlOptions.brands?.length ?? 0) > 0,
+      },
+      aiClient: getAiClient(),
+    });
+    candidateOptions = {
+      ...sqlOptions,
+      // interpreted path: relevance scoring + the evidence gate replace the
+      // token-AND LIKE gate (which killed "summer formal"-style queries)
+      query: undefined,
+      priceMinCents: sqlOptions.priceMinCents ?? plan.sqlFilters.priceMinCents,
+      priceMaxCents: sqlOptions.priceMaxCents ?? plan.sqlFilters.priceMaxCents,
+      sizesNormalized: sqlOptions.sizesNormalized?.length
+        ? sqlOptions.sizesNormalized
+        : plan.sqlFilters.sizesNormalized,
+      lengthClasses: sqlOptions.lengthClasses?.length
+        ? sqlOptions.lengthClasses
+        : plan.sqlFilters.lengthClasses,
+      brands: sqlOptions.brands?.length ? sqlOptions.brands : plan.sqlFilters.brands,
+    };
+  }
+
+  let relevance: Map<string, number> | null = null;
   const service = createMatchingService({
     loadProfile: async () => profile,
-    loadCandidates: async () => queryCandidates(db, sqlOptions).map(toCandidateWithVector),
+    loadCandidates: async () => {
+      let candidates = queryCandidates(db, candidateOptions);
+      if (plan) {
+        const applied = plan.apply(candidates);
+        candidates = applied.kept;
+        relevance = applied.relevance;
+      }
+      return candidates.map(toCandidateWithVector);
+    },
     // Deterministic-first (2026-07-09, prod 15s-feed fix): the rank endpoint
     // never blocks on Haiku. Cache hits apply synchronously ('cache'); misses
     // return 'pending' and the LLM fills rerank_cache in the background (one
@@ -161,12 +214,17 @@ export async function rankForUser(
     // with the attribute score INSIDE the service. undefined (no vectors, no
     // likes, ml never set up) keeps the pipeline identical to pre-ml behavior.
     embeddingScore: makeEmbeddingScorePort(db, profile.id),
+    // Query-relevance blend (0.7·relevance + 0.3·score₀) for interpreted
+    // searches with scoring signals; undefined otherwise → score₀ untouched.
+    searchRelevance:
+      plan?.hasScoringSignals === true
+        ? (listing) => relevance?.get(listing.id) ?? null
+        : undefined,
   });
 
-  // NOTE: free-text `query` is applied in SQL only (it searches descriptions,
-  // which the in-memory `matchesQuery` predicate cannot see — Listing carries
-  // no description). Passing it to the service would silently drop
-  // description-only matches.
+  // NOTE: free-text `query` is applied before the service (interpreted path)
+  // or in SQL (lexical-only path) — never via the service's own `matchesQuery`
+  // predicate, which cannot see descriptions (Listing carries none).
   const response = await service.rank({
     userId: profile.id,
     filters: { lengthOnBody: serviceFilters.lengthOnBody },
@@ -175,7 +233,11 @@ export async function rankForUser(
     personalize: opts.personalize,
   });
 
-  return { ...response, items: response.items.map((item) => finalizeItem(profile, item)) };
+  return {
+    ...response,
+    items: response.items.map((item) => finalizeItem(profile, item)),
+    ...(plan ? { interpreted: plan.interpreted } : {}),
+  };
 }
 
 // ── scored cards outside the rank pipeline (saves rack, find-similar) ────

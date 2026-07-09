@@ -51,6 +51,12 @@ const SearchParamsSchema = z.object({
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
     .default('false'),
+  /**
+   * Un-chipped interpretation terms (csv; additive 2026-07-09): each term is
+   * excluded from the hybrid query interpretation and kept as plain lexical
+   * text — the "remove chip → re-query lexical-only for that term" contract.
+   */
+  lex: z.string().transform(csv).optional(),
 });
 
 /** Anonymous browse (no session yet) still gets deterministic results. */
@@ -97,7 +103,12 @@ export async function GET(req: Request) {
         freshnessHours: p.freshnessHours,
       },
       { lengthOnBody: p.lengthOnBody },
-      { limit: p.limit, cursor: p.cursor, personalize: p.personalize },
+      {
+        limit: p.limit,
+        cursor: p.cursor,
+        personalize: p.personalize,
+        lexicalTerms: p.lex,
+      },
     );
     return ok(response);
   } catch (err) {

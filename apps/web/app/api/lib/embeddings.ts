@@ -23,7 +23,13 @@ import {
   type Db,
 } from '@hemline/db';
 import { embeddingSimilarity, styleEmbeddingFromSwipes } from '@hemline/matching';
-import { embedProbe, isEmbedderAvailable, type EmbedRequest } from '@hemline/matching/embedder';
+import {
+  embedProbe,
+  isEmbedderAvailable,
+  sidecarStatus,
+  warmSharedEmbedder,
+  type EmbedRequest,
+} from '@hemline/matching/embedder';
 
 /** Most recent like/save swipes folded into the user style embedding. */
 const STYLE_SWIPE_LIMIT = 200;
@@ -83,6 +89,48 @@ export async function findSimilarByEmbedding(
   }
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, limit);
+}
+
+// ── search: query-text embedding (stage 2 of hybrid search) ────────────────
+
+/** Hard deadline for an interactive query embed — search never waits longer. */
+export const QUERY_EMBED_TIMEOUT_MS = 1_500;
+/** Tiny in-process LRU so pagination doesn't re-embed the same query. */
+const QUERY_EMBED_CACHE_MAX = 200;
+const queryEmbedCache = new Map<string, Float32Array>();
+
+/**
+ * Embed free-text for search via the FashionSigLIP dual encoder — null on ANY
+ * unavailability so search silently degrades to stages 1 + lexical:
+ *  - sidecar not set up / failed → null
+ *  - sidecar cold or still warming → kick a background warmup, null NOW
+ *    (searches never pay the 5–20s model load; later ones get semantics)
+ *  - embed slower than QUERY_EMBED_TIMEOUT_MS → null
+ */
+export async function embedQueryText(text: string): Promise<Float32Array | null> {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const cached = queryEmbedCache.get(trimmed);
+  if (cached) return cached;
+
+  const { state } = sidecarStatus();
+  if (state === 'unavailable' || state === 'failed') return null;
+  if (state !== 'ready') {
+    void warmSharedEmbedder(); // fire-and-forget; benefits the NEXT search
+    return null;
+  }
+
+  const vector = await Promise.race([
+    embedProbe({ op: 'text', text: trimmed }),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), QUERY_EMBED_TIMEOUT_MS)),
+  ]);
+  if (!vector) return null;
+  if (queryEmbedCache.size >= QUERY_EMBED_CACHE_MAX) {
+    const oldest = queryEmbedCache.keys().next().value;
+    if (oldest !== undefined) queryEmbedCache.delete(oldest);
+  }
+  queryEmbedCache.set(trimmed, vector);
+  return vector;
 }
 
 // ── feed ranking: user style embedding port ────────────────────────────────
