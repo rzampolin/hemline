@@ -159,3 +159,54 @@ where docs/ARCHITECTURE.md was ambiguous or silent. Contracts were not touched.
     size hard-filter can't match `jsonld:thereformation.com` listings (raw
     labels are stored as-seen per the RawListing contract; hem/length work is
     unaffected).
+
+24. **Per-store brand strategy (`framework/brand.ts`) — vendor is never
+    trusted as the brand by default.** Founder-reported prod bug (2026-07-09):
+    single-brand storefronts abuse Shopify `vendor` (and schema.org `brand`)
+    for internal bookkeeping. Cataloged from the live facet (~249 distinct
+    "brands", ~190 junk): christydawn.com season codes (SP23…SP26B, F24A,
+    PF25, U25B, BF24B, PS26A, "Summer 24") plus its manufacturer legal entity
+    ("OSHADI COLLECTIVE (OPC) PRIVATE LIMITED"); staud.clothing collection
+    labels (48 variants of "STAUD <SEASON> <YEAR> [SALE|CORE|EXCLUSIVE|…]");
+    petalandpup.com drop codes (~55 of PUP3…PUP139, incl. lowercase pup129);
+    sisterjane.com collection names; Rouje place-name collections; RIXO
+    decorated/mojibake vendors ("RIXO ⋆", "RIXO â‹†"); Faithfull collab
+    labels. Fix: every store in stores.json / jsonld-stores.json now carries
+    `brandName` + `brandMode`. 'single' (all 41 Shopify DTC stores; most
+    JSON-LD stores) → brand is ALWAYS brandName and the vendor string is
+    demoted to an attribute-hint input; 'multi' (lulus.com, madewell.com,
+    aritzia.com, anthropologie.com, freepeople.com — retailers that genuinely
+    sell third-party labels) → vendor is kept but runs through
+    `looksLikeVendorCode` (code shape `^[A-Za-z]{1,6}[-_]?\d{1,4}[A-Za-z]{0,2}$`,
+    FW/SS/AW/PF/SP+digits, season-word+year, SALE/PREORDER/OUTLET, legal-entity
+    suffixes) and falls back to brandName when it is plainly a code. Ad-hoc
+    `--store=<domain>` runs default to 'multi' (historical vendor-wins
+    behavior minus the codes).
+
+25. **sisterjane.com is 'single' + `knownBrands: ["Ghospell"]`.** Probed live
+    2026-07-09 (one products.json page): vendor is ALWAYS a collection label —
+    "DREAM <collection>" (Sister Jane's own DREAM line), "Menswear <collection>",
+    bare names ("Voyage Voyage", "Secrets The Water Keeps"), collabs
+    ("Petersham Nurseries x Sister Jane"), and "<collection> by Ghospell".
+    Ghospell is a genuinely distinct label sold on the storefront, so a
+    `knownBrands` hit (word-boundary, case-insensitive, in both modes) maps
+    the vendor to it; everything else collapses to "Sister Jane". Same
+    mechanism keeps Bo+Tee distinct on ohpolly.com.
+
+26. **Brand does NOT feed content_hash → the brand fix is a plain UPDATE, but
+    a migration is still required.** The recipe is
+    sha256(title|desc|price|images|sizes) (packages/db/src/content-hash.ts;
+    `contentHashFor` picks fields explicitly, so RawListing.brand never feeds
+    hashing at ingest either). Consequences: (a) fixing brands cannot orphan
+    the content_hash-keyed `extractions` (~$20 of Haiku) or
+    `listing_embeddings` (~7k vectors), and the next crawl computes an
+    identical hash — zero churn/re-extraction; (b) the connector fix alone
+    can never repair existing rows, because the pipeline's unchanged-hash
+    path only bumps last_seen_at/availability and never rewrites brand.
+    Hence `scripts/fix-brands.ts` (bundled to /app/dist/fix-brands.mjs, same
+    esbuild-launcher pattern as prod-seed): recomputes every shopify:/jsonld:
+    listing's brand through the SAME `resolveBrand` the connectors use,
+    dry-run by default, `--apply` commits in one transaction with a
+    before/after orphan-count integrity check that rolls back on any
+    discrepancy. eBay/fixture sources are never touched. Prod:
+    `fly ssh console -C "node /app/dist/fix-brands.mjs"` then `… --apply`.
