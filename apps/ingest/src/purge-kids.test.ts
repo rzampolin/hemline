@@ -66,7 +66,13 @@ beforeEach(() => {
   const t = createTestDb();
   db = t.db;
   cleanup = t.cleanup;
-  for (const id of ['shopify:doen.test', 'shopify:lsf.test', 'shopify:adult.test']) {
+  for (const id of [
+    'shopify:doen.test',
+    'shopify:lsf.test',
+    'shopify:adult.test',
+    'shopify:selkie.test',
+    'shopify:motel.test',
+  ]) {
     db.insert(sources)
       .values({ id, kind: 'shopify', displayName: id, cadenceCron: '0 6 * * *' })
       .run();
@@ -103,6 +109,36 @@ describe('scanKidsListings — heuristic report', () => {
     expect(report.perStore['shopify:lsf.test'].count).toBe(2);
     expect(report.perStore['shopify:lsf.test'].sampleTitles[0]).toMatch(/Girls Decker/);
     expect(report.perStore['shopify:adult.test']).toBeUndefined();
+  });
+});
+
+describe('purgeKids — vision verdict outranks keyword flags (prod false positives 2026-07-09)', () => {
+  it('keyword-flagged listings with audience=adult are cleared, reported, never removed', () => {
+    seedCatalog();
+    // Selkie-style name-copy false positive: matches a child keyword BUT
+    // vision has already said adult. (Use "children" — "Baby Soft"/"Star
+    // Child" themselves are now guarded at the regex level.)
+    addListing('selkie-fp', 'shopify:selkie.test', 'The Children of Flowers Gown', ['XS', 'S', 'M'], {
+      extractionAudience: 'adult',
+    });
+    const report = purgeKids(db, { apply: true });
+    expect(report.visionCleared.map((f) => f.listingId)).toEqual(['selkie-fp']);
+    expect(report.flagged).toBe(2); // only the two genuine kid items
+    const still = db.select({ id: listings.id }).from(listings).where(sql`removed_at IS NULL AND id = 'selkie-fp'`).all();
+    expect(still).toHaveLength(1); // never removed
+    expect(formatPurgeReport(report)).toContain('CLEARED by vision');
+  });
+
+  it('regex guards: Selkie "Baby Soft"/"Baby Banana" and Motel "Star Child" never flag at all', () => {
+    seedCatalog();
+    addListing('selkie-soft', 'shopify:selkie.test', 'The Baby Soft Cake Shop Dress', ['XS', 'S', 'M', '1X']);
+    addListing('selkie-banana', 'shopify:selkie.test', 'The Baby Banana Puff Dress', ['XS', 'S']);
+    addListing('motel-star', 'shopify:motel.test', 'Malina Dress in Star Child Glitter Net', ['S', 'M']);
+    const report = scanKidsListings(db);
+    const ids = report.flagged.map((f) => f.listingId);
+    expect(ids).not.toContain('selkie-soft');
+    expect(ids).not.toContain('selkie-banana');
+    expect(ids).not.toContain('motel-star');
   });
 });
 

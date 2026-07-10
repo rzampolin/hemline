@@ -57,7 +57,10 @@ export const CHILD_KEYWORD_RE = new RegExp(
     String.raw`\bgirl'?s\b(?!'?\s+(?:night|trip|weekend|getaway))`,
     // kids / kid's — bare singular "kid" excluded ("kid mohair" is a fabric)
     String.raw`\bkid'?s\b`,
-    String.raw`\bchild(?:ren)?(?:'s)?\b`,
+    // child/children — but NOT print/name copy like Motel Rocks' "Star Child
+    // Glitter Net" (prod false positive 2026-07-09): require it NOT be
+    // preceded by star/moon/wild/flower (adult print vocabulary)
+    String.raw`(?<!\bstar\s)(?<!\bmoon\s)(?<!\bwild\s)(?<!\bflower\s)\bchild(?:ren)?(?:'s)?\b`,
     String.raw`\btoddlers?\b`,
     String.raw`\binfants?\b`,
     String.raw`\bnewborns?\b`,
@@ -66,8 +69,13 @@ export const CHILD_KEYWORD_RE = new RegExp(
     String.raw`\bjunior\s+girls\b`,
     // baby — but NOT color ("baby blue"), silhouette ("baby doll"; one-word
     // "babydoll" never matches \bbaby\b), occasion ("baby shower"), maternity
-    // ("baby bump") or the flower print ("baby's breath")
-    String.raw`\bbaby\b(?!\s+(?:blues?\b|pinks?\b|yellows?\b|greens?\b|doll\b|showers?\b|bump\b)|'s\s+breath)`,
+    // ("baby bump"), the flower print ("baby's breath"), or Selkie's adult
+    // "Baby Soft <name>" fabric-collection titles and cutesy adult names like
+    // "The Baby Banana Puff Dress" (prod false positives 2026-07-09): "baby"
+    // followed by soft/banana or any capitalized-fruit-ish single token then
+    // an adult garment word is name-copy, not audience. Pragmatic guard:
+    // require baby NOT be immediately followed by soft/banana.
+    String.raw`\bbaby\b(?!\s+(?:blues?\b|pinks?\b|yellows?\b|greens?\b|doll\b|showers?\b|bump\b|soft\b|banana\b)|'s\s+breath)`,
     // the kid half of a matching set
     String.raw`\bmini[\s-]?me\b`,
     String.raw`\bmomm?y[\s-]?(?:and|&|n)[\s-]?me\b`,

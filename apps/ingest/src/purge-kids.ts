@@ -107,16 +107,42 @@ export interface PurgeResult {
   flagged: number;
   removed: number;
   perStore: KidsScanReport['perStore'];
+  /** keyword-flagged but vision says adult — false positives, never removed */
+  visionCleared: KidsFlaggedListing[];
 }
 
 /**
  * Soft-delete the heuristic-flagged listings (removed_at = now — verifier
  * semantics). Dry-run (apply=false) only reports. Idempotent: a second
  * --apply run scans 0 flagged rows (removed_at IS NULL filter).
+ *
+ * VISION OVERRIDE (2026-07-09, prod dry-run finding): keyword flags have
+ * name-copy false positives (Selkie's adult "Baby Soft" collection, Motel
+ * Rocks' "Star Child" print). A persisted vision verdict of audience='adult'
+ * OUTRANKS a keyword flag — those listings are reported (visionCleared) but
+ * never removed. Run --recheck-vision first for exactly this reason.
  */
 export function purgeKids(db: Db, opts: { apply: boolean; now?: number }): PurgeResult {
   const now = opts.now ?? Date.now();
   const report = scanKidsListings(db);
+  // vision-cleared: extraction says adult → keyword flag is a false positive
+  const flaggedIds = report.flagged.map((f) => f.listingId);
+  const adultVerdicts = new Set<string>();
+  for (let i = 0; i < flaggedIds.length; i += 500) {
+    const rows = db
+      .select({ listingId: extractions.listingId })
+      .from(extractions)
+      .where(
+        and(
+          inArray(extractions.listingId, flaggedIds.slice(i, i + 500)),
+          eq(extractions.audience, 'adult'),
+        ),
+      )
+      .all();
+    for (const r of rows) adultVerdicts.add(r.listingId);
+  }
+  const visionCleared = report.flagged.filter((f) => adultVerdicts.has(f.listingId));
+  report.flagged = report.flagged.filter((f) => !adultVerdicts.has(f.listingId));
   let removed = 0;
   if (opts.apply && report.flagged.length > 0) {
     const ids = report.flagged.map((f) => f.listingId);
@@ -144,6 +170,7 @@ export function purgeKids(db: Db, opts: { apply: boolean; now?: number }): Purge
     flagged: report.flagged.length,
     removed,
     perStore: report.perStore,
+    visionCleared,
   };
 }
 
@@ -349,6 +376,14 @@ export function formatPurgeReport(r: PurgeResult): string {
   for (const [sourceId, { count, sampleTitles }] of stores) {
     lines.push(`[purge-kids]   ${sourceId}: ${count}`);
     for (const t of sampleTitles) lines.push(`[purge-kids]     - ${t}`);
+  }
+  if (r.visionCleared.length > 0) {
+    lines.push(
+      `[purge-kids] ${r.visionCleared.length} keyword flag(s) CLEARED by vision verdict (audience=adult) — kept:`,
+    );
+    for (const f of r.visionCleared.slice(0, 10)) {
+      lines.push(`[purge-kids]     ✓ ${f.title} [${f.reason}]`);
+    }
   }
   return lines.join('\n');
 }
