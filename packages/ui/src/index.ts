@@ -1,7 +1,7 @@
 export { cn } from './cn';
 export { Button, ButtonLink } from './button';
 export { Chip, RemovableChip } from './chip';
-export { ProgressBar, ProgressDots } from './progress';
+export { HeartsProgress, ProgressBar, ProgressDots } from './progress';
 export { FreshnessBadge, SourceBadge, formatAgo, isStale, sourceKind, sourceLabel } from './badges';
 export {
   HemBadge,

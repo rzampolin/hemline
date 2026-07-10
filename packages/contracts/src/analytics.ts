@@ -69,10 +69,42 @@ export const AnalyticsEventSchema = z.discriminatedUnion('type', [
   z
     .object({
       type: z.literal('deck_swipe'),
-      props: z.object({ verdict, index: z.number().int().min(0).max(99) }).strict(),
+      props: z
+        .object({
+          verdict,
+          index: z.number().int().min(0).max(99),
+          /** additive (2026-07-10, adaptive deck): 0-based extension batch */
+          batch: z.number().int().min(0).max(9).optional(),
+        })
+        .strict(),
     })
     .strict(),
-  z.object({ type: z.literal('deck_completed'), props: z.object({}).strict() }).strict(),
+  z
+    .object({
+      type: z.literal('deck_completed'),
+      // all props additive (2026-07-10, adaptive deck) — old empty payloads stay valid
+      props: z
+        .object({
+          likes: z.number().int().min(0).max(99).optional(),
+          cardsSeen: z.number().int().min(0).max(99).optional(),
+          reason: z.enum(['target', 'cap', 'skip', 'exhausted']).optional(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      /**
+       * A deck card image failed to load (network error or ~5s stall) and the
+       * client fell back to the listing's next image / a spare card. `position`
+       * is the image's index within the listing's gallery — position-0 failures
+       * mean the primary CDN entry is dead, higher positions mean the fallback
+       * chain is being exercised. Additive, 2026-07-10.
+       */
+      type: z.literal('deck_image_error'),
+      props: z.object({ position: z.number().int().min(0).max(19) }).strict(),
+    })
+    .strict(),
 
   // ── feed / search / filters
   z

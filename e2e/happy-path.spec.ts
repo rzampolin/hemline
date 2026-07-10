@@ -72,7 +72,7 @@ test('landing → quiz → swipe → feed → detail → save', async ({ page })
     await page.getByTestId(verdicts[i]).click();
     await page.waitForTimeout(320); // fling animation
   }
-  await page.getByTestId('deck-done').click();
+  // 5 likes/saves collected → adaptive deck auto-completes (2026-07-10)
   await expect(page.getByText('rack…', { exact: false })).toBeVisible(); // building state
 
   /* ── feed ── */

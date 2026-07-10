@@ -39,8 +39,9 @@ color-analysis opt-in, catalog gaps). No third parties, ever.
 | `quiz_started` | — | onboarding funnel top |
 | `quiz_step_completed` | `step` (1–8) | per-screen drop-off (spec §5) |
 | `quiz_completed` | `durationMs` (capped 2h) | completion rate, time-to-first-feed proxy |
-| `deck_swipe` | `verdict` (like/dislike/save), `index` | swipe engagement (≥10 median), like-rate |
-| `deck_completed` | — | calibration completion |
+| `deck_swipe` | `verdict` (like/dislike/save), `index`, `batch?` (0-based extension batch, additive 2026-07-10) | swipe engagement (≥10 median), like-rate |
+| `deck_completed` | `likes?`, `cardsSeen?`, `reason?` (target/cap/skip/exhausted — all additive 2026-07-10) | calibration completion + how it completed (adaptive deck) |
+| `deck_image_error` | `position` (image's index in the listing gallery, 0–19) | prod scale of dead/stalled deck images; position 0 = primary CDN entry dead (2026-07-10) |
 | `feed_viewed` | `page` (0-based) | feed depth / infinite-scroll reach |
 | `search_submitted` | `query` (≤120 chars), `interpreted` (bool), `resultCount` | top queries; **zero-result queries = catalog gaps** |
 | `filter_applied` | `kind` (size/price/length/color/brand/source/condition) | which facets earn their pixels |

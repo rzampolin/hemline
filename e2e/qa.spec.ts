@@ -50,6 +50,8 @@ async function onboard(page: Page, feet: number, inch: number, opts: { toFeed?: 
   await expect(page).toHaveURL(/\/calibrate/);
   if (opts.toFeed === false) return;
   await page.getByTestId('swipe-card').first().waitFor();
+  // 4 likes + 2 passes: below the 5-like adaptive auto-complete, so the
+  // explicit skip affordance (deck-done) still carries this path (2026-07-10)
   for (let i = 0; i < 6; i++) {
     await page.getByTestId(i % 3 === 1 ? 'swipe-pass' : 'swipe-like').click();
     await page.waitForTimeout(330);

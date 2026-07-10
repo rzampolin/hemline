@@ -31,6 +31,41 @@ function mix(a: [number, number, number], b: [number, number, number], t: number
 const CREAM: [number, number, number] = [250, 246, 239];
 const INK: [number, number, number] = [34, 29, 24];
 
+/**
+ * Known flat-gray placeholder hosts. The live catalog still contains fixture
+ * listings (fixture:ebay / fixture:shopify) whose images are literal
+ * placehold.co gray boxes — the root cause of the "gray card" reports in the
+ * calibration deck (2026-07-10). These load "successfully" (HTTP 200), so
+ * onError can't catch them; they must be recognized by URL.
+ */
+export function isPlaceholderImage(url: string): boolean {
+  return url.startsWith('https://placehold.co') || url.startsWith('http://placehold.co');
+}
+
+/** Minimal listing surface needed to draw an editorial placeholder. */
+export interface PlaceholderSource {
+  brand: string | null;
+  colors: { hex: string | null }[];
+  lengthClass: string | null;
+}
+
+/**
+ * Build an editorial inline-SVG placeholder from a listing's real extracted
+ * attributes (colors, length, brand) — the on-brand replacement for a gray
+ * box, used when a card image is a known placeholder or every gallery image
+ * failed. Same visual language as the mock-mode `mockimg:` scheme.
+ */
+export function editorialPlaceholder(listing: PlaceholderSource, i = 0): string {
+  const params = new URLSearchParams({
+    i: String(i),
+    c0: (listing.colors[0]?.hex ?? '#a89b8c').replace('#', ''),
+    c1: (listing.colors[1]?.hex ?? listing.colors[0]?.hex ?? '#a89b8c').replace('#', ''),
+    len: listing.lengthClass ?? 'midi',
+    b: listing.brand ?? 'One of a kind',
+  });
+  return resolveImage(`mockimg:${params.toString()}`);
+}
+
 export function resolveImage(url: string): string {
   if (!url.startsWith('mockimg:')) return url;
   const p = new URLSearchParams(url.slice('mockimg:'.length));

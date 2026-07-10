@@ -126,6 +126,46 @@ describe('POST /api/events', () => {
     expect(allRows().length).toBe(before);
   });
 
+  it('accepts the adaptive-deck events (additive whitelist, 2026-07-10)', async () => {
+    const res = await eventsPOST(
+      batchReq({
+        anonId: ANON,
+        events: [
+          { type: 'deck_image_error', props: { position: 0 } },
+          { type: 'deck_swipe', props: { verdict: 'like', index: 13, batch: 1 } },
+          { type: 'deck_swipe', props: { verdict: 'like', index: 2 } }, // batch optional (old clients)
+          { type: 'deck_completed', props: { likes: 5, cardsSeen: 14, reason: 'target' } },
+          { type: 'deck_completed', props: {} }, // old empty payload stays valid
+        ],
+      }),
+    );
+    expect(res.status).toBe(204);
+    const rows = allRows().slice(-5);
+    expect(rows.map((r) => r.eventType)).toEqual([
+      'deck_image_error',
+      'deck_swipe',
+      'deck_swipe',
+      'deck_completed',
+      'deck_completed',
+    ]);
+    expect(JSON.parse(rows[3].propsJson)).toEqual({ likes: 5, cardsSeen: 14, reason: 'target' });
+  });
+
+  it('rejects junk on the adaptive-deck events (closed whitelist holds)', async () => {
+    const before = allRows().length;
+    const junk = [
+      { type: 'deck_image_error', props: { position: 25 } }, // out of range
+      { type: 'deck_image_error', props: { position: 0, url: 'https://leak' } }, // extra key
+      { type: 'deck_swipe', props: { verdict: 'like', index: 0, batch: 99 } }, // batch out of range
+      { type: 'deck_completed', props: { reason: 'rage_quit' } }, // unknown reason
+    ];
+    for (const event of junk) {
+      const res = await eventsPOST(batchReq({ anonId: ANON, events: [event] }));
+      expect(res.status, JSON.stringify(event)).toBe(400);
+    }
+    expect(allRows().length).toBe(before);
+  });
+
   it('rejects an oversized batch (nothing written)', async () => {
     const before = allRows().length;
     const res = await eventsPOST(
@@ -219,8 +259,9 @@ describe('GET /api/admin/analytics', () => {
     expect(hit).toMatchObject({ zeroResultCount: 0, alwaysZeroResults: false, lastResultCount: 7 });
 
     expect(day.filterUsage).toEqual({ price: 1 });
-    expect(day.swipes).toMatchObject({ total: 2, likeRate: 0.5 });
-    expect(day.swipes.byVerdict).toEqual({ like: 1, dislike: 1 });
+    // 2 swipes here + 2 likes from the adaptive-deck acceptance test above
+    expect(day.swipes).toMatchObject({ total: 4, likeRate: 0.75 });
+    expect(day.swipes.byVerdict).toEqual({ like: 3, dislike: 1 });
 
     // 7d window is a superset of 24h
     expect(body.data.windows['7d'].funnel.quizStarted).toBeGreaterThanOrEqual(day.funnel.quizStarted);
