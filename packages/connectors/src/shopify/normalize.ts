@@ -10,6 +10,7 @@ import type { ExtractedAttributes, RawListing } from '@hemline/contracts';
 import { resolveBrand, type BrandStrategyInfo } from '../framework/brand';
 import {
   attributeHintsFromText,
+  detectChildAudience,
   isDressText,
   looksLikeSizeLabel,
   OTHER_CATEGORY_RE,
@@ -31,6 +32,9 @@ export interface ShopifyVariant {
 export interface ShopifyImage {
   src: string;
   position?: number;
+  /** photo alt text — carries audience copy some stores put nowhere else
+   * (live-probed 2026-07-09: shopdoen.com "Young girl in a plaid dress") */
+  alt?: string | null;
 }
 
 export interface ShopifyOption {
@@ -58,6 +62,15 @@ export interface ShopifyStoreInfo extends BrandStrategyInfo {
   displayName: string;
   /** presentment currency for USD-less stores (curated; default USD) */
   currency?: string;
+  /**
+   * Collection handles whose products are KIDS-line items to exclude — for
+   * stores whose kid products carry NO textual/metadata signal at all
+   * (live-probed 2026-07-09: shopdoen.com /collections/kids holds the whole
+   * Dôen kids line while products.json product_type/tags read like adult
+   * items). The connector fetches each handle's products.json once per crawl
+   * and drops those product ids before normalization.
+   */
+  kidsCollections?: string[];
 }
 
 const DESCRIPTION_MAX = 2000;
@@ -82,6 +95,22 @@ export function stripHtml(html: string): string {
 function tagList(tags: string[] | string | undefined): string[] {
   if (!tags) return [];
   return Array.isArray(tags) ? tags : tags.split(',').map((t) => t.trim());
+}
+
+/**
+ * Audience gate: is this product a KIDS item? Product-level metadata only
+ * (title / product_type / tags / image alt text) plus the kid-size-majority
+ * rule over the size labels — the description is deliberately excluded
+ * (adult PDPs cross-sell "mini me" versions in body copy).
+ */
+export function shopifyChildAudienceReason(p: ShopifyProduct): string | null {
+  const alts = (p.images ?? []).map((i) => i.alt ?? '').filter(Boolean);
+  const text = [p.title, p.product_type ?? '', tagList(p.tags).join(' '), alts.join(' ')].join(
+    '\n',
+  );
+  const { sizeLabels } = shopifyAvailability(p);
+  const verdict = detectChildAudience({ text, sizeLabels });
+  return verdict.child ? verdict.reason : null;
 }
 
 /** Dresses-only filter: product_type first, then tags, then title. */
@@ -169,6 +198,7 @@ export function normalizeShopifyProduct(
   seenAt: number,
 ): RawListing | null {
   if (!isDressProduct(p)) return null;
+  if (shopifyChildAudienceReason(p) != null) return null; // kids item — never a candidate
   if (!Array.isArray(p.variants) || p.variants.length === 0) return null;
 
   const { sizeLabels, availability } = shopifyAvailability(p);

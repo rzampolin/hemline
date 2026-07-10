@@ -66,6 +66,42 @@ export const OCCASIONS = [
   'party',
 ] as const;
 
+/** Who the garment is for (contracts AudienceSchema; additive 2026-07-09). */
+export const AUDIENCES = ['adult', 'child'] as const;
+
+/**
+ * Keyword fallback for the mock extractor: 'child' on unambiguous kid copy,
+ * null otherwise (never guess 'adult' from silence). Context-guarded against
+ * the adult traps — "mini dress", "baby blue", "baby doll"/"babydoll" (adult
+ * silhouette), "baby shower", "girls night out", "girl boss" (bare singular
+ * "girl" never matches), plain "junior" (adult US size category). Mirrors the
+ * connector-level gate in @hemline/connectors framework/dress-heuristics.ts —
+ * kept separate because the packages share no dependency edge (same pattern
+ * as LENGTH_KEYWORDS here vs LENGTH_HINTS there).
+ */
+export const CHILD_AUDIENCE_RE = new RegExp(
+  [
+    String.raw`\bgirl'?s\b(?!'?\s+(?:night|trip|weekend|getaway))`,
+    String.raw`\bkid'?s\b`,
+    String.raw`\bchild(?:ren)?(?:'s)?\b`,
+    String.raw`\btoddlers?\b`,
+    String.raw`\binfants?\b`,
+    String.raw`\bnewborns?\b`,
+    String.raw`\btweens?\b`,
+    String.raw`\byouth\b`,
+    String.raw`\bjunior\s+girls\b`,
+    String.raw`\bbaby\b(?!\s+(?:blues?\b|pinks?\b|yellows?\b|greens?\b|doll\b|showers?\b|bump\b)|'s\s+breath)`,
+    String.raw`\bmini[\s-]?me\b`,
+    String.raw`\bmomm?y[\s-]?(?:and|&|n)[\s-]?me\b`,
+    String.raw`\b(?:young|little)\s+(?:girl|boy)s?\b`,
+  ].join('|'),
+  'i',
+);
+
+export function audienceFromText(text: string): 'child' | null {
+  return CHILD_AUDIENCE_RE.test(text) ? 'child' : null;
+}
+
 // ── keyword → taxonomy tables (checked in order; first match wins) ─────────
 
 export const LENGTH_KEYWORDS: Array<[RegExp, LengthClass]> = [

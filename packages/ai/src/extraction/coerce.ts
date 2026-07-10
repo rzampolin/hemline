@@ -18,7 +18,7 @@
  * The result is re-validated by the caller; coercion never bypasses the schema.
  */
 import { LengthClassSchema, SilhouetteSchema } from '@hemline/contracts';
-import { NECKLINES, OCCASIONS, PATTERNS, SLEEVES } from './taxonomy';
+import { AUDIENCES, NECKLINES, OCCASIONS, PATTERNS, SLEEVES } from './taxonomy';
 
 const LENGTH_CLASSES: readonly string[] = LengthClassSchema.options;
 const SILHOUETTES: readonly string[] = SilhouetteSchema.options;
@@ -94,6 +94,7 @@ export function coerceExtractionOutput(raw: unknown): unknown {
     sleeve: coerceEnum(r.sleeve, SLEEVES),
     pattern: coerceEnum(r.pattern, PATTERNS),
     occasions,
+    audience: coerceEnum(r.audience, AUDIENCES), // no 'other' → null
     confidence: coerceNumber(r.confidence) ?? 0.5,
   };
 }

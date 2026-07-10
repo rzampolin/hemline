@@ -95,6 +95,7 @@ describe('finalizeModelOutput — deterministic pre-parse verification', () => {
     sleeve: 'sleeveless',
     pattern: 'solid',
     occasions: ['cocktail'],
+    audience: null,
     confidence: 0.9,
   };
   const anInput = input('h', 'Navy Slip Midi Dress');

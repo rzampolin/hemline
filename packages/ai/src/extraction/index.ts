@@ -576,6 +576,7 @@ export function finalizeModelOutput(
     sleeve: output.sleeve,
     pattern: output.pattern,
     occasions: output.occasions,
+    audience: output.audience ?? null,
     attributeVector: {},
     confidence: Math.max(0, Math.min(1, output.confidence)),
   };

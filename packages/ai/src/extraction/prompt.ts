@@ -17,7 +17,7 @@ import {
   type ExtractionInput,
 } from '@hemline/contracts';
 import type { ParsedMeasurements } from './measurements';
-import { NECKLINES, OCCASIONS, PATTERNS, SLEEVES } from './taxonomy';
+import { AUDIENCES, NECKLINES, OCCASIONS, PATTERNS, SLEEVES } from './taxonomy';
 
 /**
  * What the model is asked to produce. `attributeVector` is intentionally NOT
@@ -43,6 +43,7 @@ export const ExtractionModelOutputSchema = z.object({
   sleeve: z.enum(SLEEVES).nullable(),
   pattern: z.enum(PATTERNS).nullable(),
   occasions: z.array(z.enum(OCCASIONS)),
+  audience: z.enum(AUDIENCES).nullable(),
   confidence: z.number(),
 });
 export type ExtractionModelOutput = z.infer<typeof ExtractionModelOutputSchema>;
@@ -57,6 +58,7 @@ Rules:
 - lengthClass: prefer an explicitly stated garment reality (e.g. "falls to a mid calf length", stated inches) over a marketing title word ("Midi Dress"). If only inches are known: <31.5 micro, <34.5 mini, <37.5 above_knee, <41.5 knee, <45.5 midi, <51 mid_calf, <57.5 maxi, else floor.
 - colors: 1–3 colors, most dominant first; name is the seller's word (lowercase), family one of: black, white, gray, brown, red, orange, yellow, green, blue, purple, pink, metallic; hex a representative sRGB hex or null.
 - pattern: "solid" when a color is stated and no print is mentioned.
+- audience: who the garment is FOR. "child" when this is a kids'/girls' item — a child model wearing it in the photo is unmistakable; other signals are kid size runs (2T-6T, 4Y, 12M, slash-pair years like 2/3…8/9) or girls/kids/toddler/baby wording. "adult" when it is clearly adult womenswear. null only when genuinely unsure. Adult traps that are NOT child signals: "mini dress" (a length), "baby blue/pink" (colors), "babydoll"/"baby doll" (an adult silhouette), "baby shower" (an adult occasion), "girls night out" (adult party copy), numeric sizes 2-14 alone (a normal adult US run).
 - A PRE-PARSED MEASUREMENTS block computed by a deterministic parser may be present in the input. Treat its values as ground truth: copy them into your output unless the listing text plainly contradicts them.
 - confidence: 0..1 — your overall confidence in the extraction (1 = every field explicit in the text).`;
 

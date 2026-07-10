@@ -21,6 +21,7 @@
     "extract:lengths": "node --env-file-if-exists=.env --import tsx apps/ingest/src/estimate-lengths.ts",
     "verify:listings": "node --env-file-if-exists=.env --import tsx apps/ingest/src/verify.ts",
     "fix:brands": "node --env-file-if-exists=.env --import tsx scripts/fix-brands.ts",
+    "purge:kids": "node --env-file-if-exists=.env --import tsx scripts/purge-kids.ts",
     "ml:setup": "bash ml/setup.sh",
     "embed": "node --env-file-if-exists=.env --import tsx apps/ingest/src/embed.ts",
     "db:migrate": "mkdir -p data && drizzle-kit push",

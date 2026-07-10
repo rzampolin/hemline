@@ -49,6 +49,7 @@ const good = {
   sleeve: null,
   pattern: 'solid',
   occasions: ['cocktail'],
+  audience: null,
   confidence: 0.9,
 };
 

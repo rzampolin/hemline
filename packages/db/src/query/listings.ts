@@ -132,7 +132,14 @@ function priceUsdCentsSql(): SQL {
 export function queryCandidates(db: Db, opts: CandidateQueryOptions = {}): CandidateListing[] {
   const now = Date.now();
   const kinds = sourceKinds(db);
-  const conds: SQL[] = [isNull(listings.removedAt) as SQL, freshnessCondition(kinds, now, opts.freshnessHours)];
+  const conds: SQL[] = [
+    isNull(listings.removedAt) as SQL,
+    freshnessCondition(kinds, now, opts.freshnessHours),
+    // audience gate (2026-07-09 kids-in-catalog): extraction-flagged CHILD
+    // listings never reach the candidate pool; no extraction row / NULL
+    // audience is treated as adult (unknown must not nuke coverage).
+    sql`COALESCE(${extractions.audience}, 'adult') <> 'child'`,
+  ];
 
   if (opts.sizesNormalized && opts.sizesNormalized.length > 0) {
     // Size-unknown (`[]`) is not a mismatch — packages/matching filters.ts

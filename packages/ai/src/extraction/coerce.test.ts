@@ -15,6 +15,7 @@ function validPayload(): Record<string, unknown> {
     sleeve: 'sleeveless',
     pattern: 'solid',
     occasions: ['cocktail'],
+    audience: 'adult',
     confidence: 0.9,
   };
 }

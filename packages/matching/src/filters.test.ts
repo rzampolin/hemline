@@ -127,6 +127,17 @@ describe('measurementsFit — silhouette ease table', () => {
 });
 
 describe('matchesHardFilters', () => {
+  it("audience gate: 'child' never matches; null/absent/adult pass (kids-in-catalog 2026-07-09)", () => {
+    expect(matchesHardFilters(listing({ audience: 'child' }), {})).toBe(false);
+    expect(matchesHardFilters(listing({ audience: 'adult' }), {})).toBe(true);
+    expect(matchesHardFilters(listing({ audience: null }), {})).toBe(true);
+    expect(matchesHardFilters(listing(), {})).toBe(true); // absent = legacy rows
+    // global invariant: no user filter can re-admit a child listing
+    expect(
+      matchesHardFilters(listing({ audience: 'child' }), { brands: ['reformation'] }),
+    ).toBe(false);
+  });
+
   it('budget window', () => {
     expect(matchesHardFilters(listing(), { priceMaxCents: 10000 })).toBe(false);
     expect(matchesHardFilters(listing(), { priceMinCents: 20000 })).toBe(false);

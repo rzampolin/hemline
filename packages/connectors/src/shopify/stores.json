@@ -21,7 +21,8 @@
     "brandName": "Dôen",
     "brandMode": "single",
     "verified": true,
-    "note": "vendor 'DOEN' (unaccented) — brandName wins for facet consistency"
+    "kidsCollections": ["kids"],
+    "note": "vendor 'DOEN' (unaccented) — brandName wins for facet consistency. Kids line (LITTLE … / LUCY etc.) carries ZERO kid metadata in products.json (product_type='FALL 25', adult-looking sizes 2-10); /collections/kids is the authoritative exclusion (probed 2026-07-09), image alt text ('Young girl in…') is the backstop"
   },
   {
     "domain": "withjean.com",

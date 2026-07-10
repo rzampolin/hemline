@@ -50,13 +50,15 @@ RUN ESB="node_modules/.bin/esbuild --bundle --platform=node --format=esm --targe
  && eval "$ESB apps/ingest/src/upgrade.ts  --outfile=dist/impl/extract-upgrade.impl.mjs" \
  && eval "$ESB apps/ingest/src/estimate-lengths.ts --outfile=dist/impl/extract-lengths.impl.mjs" \
  && eval "$ESB apps/ingest/src/verify.ts           --outfile=dist/impl/verify-listings.impl.mjs" \
+ && eval "$ESB scripts/purge-kids.ts       --outfile=dist/impl/purge-kids.impl.mjs" \
  && printf 'import "./impl/ingest-scheduler.impl.mjs";\n' > dist/ingest-scheduler.mjs \
  && printf 'import "./impl/ingest-run.impl.mjs";\n'       > dist/ingest-run.mjs \
  && printf 'import "./impl/seed.impl.mjs";\n'             > dist/seed.mjs \
  && printf 'import "./impl/fix-brands.impl.mjs";\n'       > dist/fix-brands.mjs \
  && printf 'import "./impl/extract-upgrade.impl.mjs";\n'  > dist/extract-upgrade.mjs \
  && printf 'import "./impl/extract-lengths.impl.mjs";\n'  > dist/extract-lengths.mjs \
- && printf 'import "./impl/verify-listings.impl.mjs";\n'  > dist/verify-listings.mjs
+ && printf 'import "./impl/verify-listings.impl.mjs";\n'  > dist/verify-listings.mjs \
+ && printf 'import "./impl/purge-kids.impl.mjs";\n'       > dist/purge-kids.mjs
 
 # ── ml: FashionSigLIP venv + weights, baked at BUILD time ───────────────────
 # Same Debian base as the runtime so the venv's /usr/bin/python3.11 symlinks

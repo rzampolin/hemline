@@ -131,6 +131,10 @@ export function matchesHardFilters(
   filters: HardFilters,
   ctx?: UserFitContext,
 ): boolean {
+  // Audience gate (2026-07-09 kids-in-catalog): CHILD listings never match,
+  // regardless of user filters. Null/absent = unknown = treated as adult —
+  // this is a global product invariant, not a user-selectable filter.
+  if (listing.audience === 'child') return false;
   // Budget bounds are USD cents (spec §3); GBP/EUR listings are compared via
   // their static-FX USD equivalent (contracts/fx.ts, QA P1 #3) — display
   // elsewhere stays native-currency.

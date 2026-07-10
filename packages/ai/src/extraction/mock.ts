@@ -10,6 +10,7 @@
 import type { ColorTag, ExtractedAttributes, ExtractionInput, LengthClass } from '@hemline/contracts';
 import { parseMeasurements } from './measurements';
 import {
+  audienceFromText,
   buildAttributeVector,
   COLOR_TABLE,
   FABRIC_KEYWORDS,
@@ -91,6 +92,8 @@ export function mockExtract(input: ExtractionInput): ExtractedAttributes {
     sleeve,
     pattern,
     occasions,
+    // TITLE only — descriptions cross-sell "mini me" versions on ADULT dresses
+    audience: hints.audience ?? audienceFromText(input.title),
     attributeVector: {},
     confidence,
   };

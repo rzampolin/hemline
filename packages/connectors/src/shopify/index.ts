@@ -10,7 +10,13 @@
  * - per-store error isolation: fetchListings never throws; errors are counted
  *   in stats and partial results are returned
  */
-import type { FetchContext, FetchResult, RawListing, SourceConnector } from '@hemline/contracts';
+import type {
+  FetchContext,
+  FetchResult,
+  Logger,
+  RawListing,
+  SourceConnector,
+} from '@hemline/contracts';
 import { createMemoryEtagCache } from '../framework/etag-cache';
 import { loadExistingRawListings } from '../framework/existing-listings';
 import { politeFetch, type PolitenessOptions } from '../framework/politeness';
@@ -48,6 +54,44 @@ export interface ShopifyConnectorOptions extends PolitenessOptions {
 
 const PAGE_SIZE = 250;
 
+/**
+ * Product ids of a store's configured kids collections (ShopifyStoreInfo
+ * .kidsCollections), fetched via `/collections/{handle}/products.json` —
+ * the authoritative signal for stores whose kids-line items carry NO textual
+ * metadata (live-probed 2026-07-09: shopdoen.com /collections/kids). Fail-OPEN:
+ * an unreachable collection logs a warning and excludes nothing (the audience
+ * keyword/size heuristics and the extraction-level audience field still apply).
+ */
+export async function fetchKidsCollectionIds(
+  origin: string,
+  handles: string[],
+  opts: PolitenessOptions,
+  log: Logger,
+  maxPagesPerCollection = 4,
+): Promise<Set<number>> {
+  const ids = new Set<number>();
+  for (const handle of handles) {
+    for (let page = 1; page <= maxPagesPerCollection; page++) {
+      const url = `${origin}/collections/${encodeURIComponent(handle)}/products.json?limit=${PAGE_SIZE}&page=${page}`;
+      try {
+        const res = await politeFetch(url, { headers: { accept: 'application/json' } }, opts);
+        if (!res.ok) {
+          log.warn(`[shopify] kids collection '${handle}' → HTTP ${res.status} — excluding nothing from it`);
+          break;
+        }
+        const body = (await res.json()) as { products?: Array<{ id?: number }> };
+        const products = Array.isArray(body.products) ? body.products : [];
+        for (const p of products) if (typeof p.id === 'number') ids.add(p.id);
+        if (products.length < PAGE_SIZE) break;
+      } catch (e) {
+        log.warn(`[shopify] kids collection '${handle}' fetch failed — excluding nothing from it`, e);
+        break;
+      }
+    }
+  }
+  return ids;
+}
+
 export function createShopifyConnector(
   store: ShopifyStoreInfo,
   opts: ShopifyConnectorOptions = {},
@@ -83,10 +127,20 @@ export function createShopifyConnector(
         log.warn(`[shopify:${store.domain}] robots.txt check failed, proceeding`, e);
       }
 
+      // kids-line exclusion set (curated stores.json kidsCollections; Dôen case)
+      let kidsIds = new Set<number>();
+      if (store.kidsCollections && store.kidsCollections.length > 0) {
+        kidsIds = await fetchKidsCollectionIds(origin, store.kidsCollections, opts, log);
+        log.info(
+          `[shopify:${store.domain}] kids-collection exclusion: ${kidsIds.size} product id(s) from [${store.kidsCollections.join(', ')}]`,
+        );
+      }
+
       const etagCache = ctx.etagCache ?? createMemoryEtagCache();
       const listings: RawListing[] = [];
       const seen = new Set<string>();
       let errors = 0;
+      let kidsSkipped = 0;
 
       for (let page = 1; page <= maxPages; page++) {
         const url = `${origin}/products.json?limit=${PAGE_SIZE}&page=${page}`;
@@ -124,6 +178,10 @@ export function createShopifyConnector(
           const seenAt = Date.now();
           for (const p of products) {
             try {
+              if (kidsIds.has(p.id)) {
+                kidsSkipped += 1;
+                continue;
+              }
               const raw = normalizeShopifyProduct(p, store, seenAt);
               if (raw && !seen.has(raw.sourceListingId)) {
                 seen.add(raw.sourceListingId);
@@ -146,6 +204,9 @@ export function createShopifyConnector(
         }
       }
 
+      if (kidsSkipped > 0) {
+        log.info(`[shopify:${store.domain}] kids-collection exclusion skipped ${kidsSkipped} product(s)`);
+      }
       return { listings, stats: { fetched: listings.length, errors } };
     },
   };

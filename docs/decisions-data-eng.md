@@ -267,3 +267,55 @@ where docs/ARCHITECTURE.md was ambiguous or silent. Contracts were not touched.
       adele (oldest unseen): live per-variant map (1X out) matched stored →
       `ok`. Fabricated dead handle on staud.clothing: real 404 on `.js` AND
       `.json` → `gone`, removed_at set.
+
+28. **Audience gate — kids' dresses never reach the catalog (2026-07-09,
+    founder-reported prod bug).** The dress filter asked "is it a dress?" but
+    never "for whom?"; LSF's Girls line and Dôen's kids line shipped straight
+    into the feed. Three layers, cheapest first:
+    - **Layer 1 — connector heuristics** (`framework/dress-heuristics.ts`
+      `detectChildAudience`, shared by Shopify + JSON-LD): (a) child keywords
+      over PRODUCT-LEVEL metadata only — title / product_type / tags / image
+      ALT text, never the description (adult PDPs cross-sell "shop the mini-me
+      version for your little one"). Context-guarded against the adult traps:
+      "mini dress", "baby blue/pink", "babydoll"/"baby doll" (adult
+      silhouette), "baby shower", "baby bump", "baby's breath", "girls
+      night/trip/weekend", bare singular "girl" ("girl boss", "it girl"),
+      plain "junior(s)" (adult US size category), "little black dress" — all
+      MUST-KEEP-tested. (b) size-set MAJORITY of kid patterns (consecutive
+      slash-pairs 2/3…14/15, 2T–6T, NB, 4Y, 12M/18-24M); plain numerics
+      [2,4,6,8,10] alone are NEVER a signal (valid adult run). Live proof:
+      LSF page 1 → 9/47 dress products flagged, all genuinely kids
+      (Girls/Tween/Little Girls Dresses), 0 adult dresses lost.
+    - **The Dôen discriminator (probed live 2026-07-09).** products.json for
+      LUCY DRESS (7324447375473) carries ZERO kid metadata: product_type
+      'FALL 25', adult vendor, clean tags, sizes 2–10. Two real signals exist:
+      (1) `/collections/kids/products.json` membership — authoritative, wired
+      as the per-store `kidsCollections` config (stores.json → the connector
+      fetches the collection's ids once per crawl and drops them, fail-OPEN);
+      (2) the first image's ALT text "Young girl in a plaid dress" — wired as
+      the `young/little girl|boy` keyword over Shopify image alt / JSON-LD
+      ImageObject name (title echoes dropped). JSON-LD stores get an
+      `excludeUrlPatterns` escape hatch (URL-path kids lines).
+    - **Layer 2 — extraction audience field** (additive everywhere):
+      `audience: 'adult'|'child'|null` on ExtractedAttributes/Listing
+      (optional additive, precedent lengthBasis), `extractions.audience`
+      column (ddl ADDITIVE_COLUMNS), Haiku prompt rule (+~5 output tokens on
+      the EXISTING call — zero extra calls; the model sees the on-model photo,
+      a kid model is unmistakable), mock keyword fallback (TITLE only),
+      coercion (invalid → null). Filters: `queryCandidates` SQL
+      `COALESCE(audience,'adult') <> 'child'` and a `matchesHardFilters`
+      guard. NULL is treated as ADULT — an unknown must never nuke coverage.
+    - **Layer 3 — purge script** (`scripts/purge-kids.ts` →
+      `dist/purge-kids.mjs`, fix-brands launcher pattern): heuristic scan over
+      existing rows (title + sizes; description deliberately excluded) →
+      per-store dry-run report → `--apply` soft-deletes (removed_at, verifier
+      semantics — saves keep the row). `--recheck-vision`: SUSPECTS ONLY
+      (active listings from `KNOWN_KIDS_LINE_SOURCE_IDS` without an audience
+      verdict, heuristic-flagged excluded), one Haiku image call each
+      (`@hemline/ai createAudienceChecker`), cost-quoted from the REAL
+      calibration ($5.81/9,981 calls ≈ $0.0006/call) and budget-guarded
+      (`--budget-usd`, default $1: upfront call cap + metered mid-run stop +
+      5-consecutive-failure abort). Verdicts persist to extractions.audience
+      even in dry-run (paid answers are never re-billed); removal only under
+      `--apply`. Idempotent: flagged rows leave the scan via removed_at,
+      vision-checked rows leave the suspect pool via audience IS NOT NULL.

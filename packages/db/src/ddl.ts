@@ -81,6 +81,7 @@ const STATEMENTS = [
     sleeve              TEXT,
     pattern             TEXT,
     occasion_json       TEXT NOT NULL DEFAULT '[]',
+    audience            TEXT,
     attribute_vector_json TEXT NOT NULL DEFAULT '{}',
     extraction_confidence REAL NOT NULL DEFAULT 0,
     extracted_at        INTEGER NOT NULL,
@@ -203,6 +204,8 @@ const ADDITIVE_COLUMNS: Array<{ table: string; column: string; ddl: string }> = 
   { table: 'users', column: 'palette_boost_enabled', ddl: `ALTER TABLE users ADD COLUMN palette_boost_enabled INTEGER` },
   // Sold-detection (2026-07-09): last conclusive per-listing availability check.
   { table: 'listings', column: 'verified_at', ddl: `ALTER TABLE listings ADD COLUMN verified_at INTEGER` },
+  // Audience gate (2026-07-09, kids-in-catalog): 'adult' | 'child' | NULL (= adult).
+  { table: 'extractions', column: 'audience', ddl: `ALTER TABLE extractions ADD COLUMN audience TEXT` },
 ];
 
 /** Create all core tables/indexes if absent. Idempotent. */

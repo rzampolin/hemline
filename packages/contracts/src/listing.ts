@@ -73,6 +73,14 @@ export type ColorTag = z.infer<typeof ColorTagSchema>;
 export const LengthBasisSchema = z.enum(['stated', 'image_estimate', 'not_estimable']);
 export type LengthBasis = z.infer<typeof LengthBasisSchema>;
 
+/**
+ * Who the garment is FOR (additive, 2026-07-09 data-eng — kids-in-catalog
+ * founder bug). 'child' listings are excluded from feed/search candidates;
+ * null is treated as adult (never nuke coverage on an unknown).
+ */
+export const AudienceSchema = z.enum(['adult', 'child']);
+export type Audience = z.infer<typeof AudienceSchema>;
+
 /** Output of the AI extraction pipeline (doc §4.3). Also used as `attributeHints`. */
 export const ExtractedAttributesSchema = z.object({
   lengthClass: LengthClassSchema.nullable(),
@@ -87,6 +95,8 @@ export const ExtractedAttributesSchema = z.object({
   sleeve: z.string().nullable(),
   pattern: z.string().nullable(),
   occasions: z.array(z.string()),
+  /** optional additive: who the garment is for (null = unknown, treated as adult) */
+  audience: AudienceSchema.nullable().optional(),
   /** sparse tag→weight vector used for style similarity (v1) */
   attributeVector: z.record(z.string(), z.number()),
   /** 0..1 */
@@ -148,6 +158,9 @@ export const ListingSchema = z.object({
   fabric: z.string().nullable(),
   neckline: z.string().nullable(),
   silhouette: SilhouetteSchema.nullable(),
+  /** optional additive: extraction-level audience ('child' is filtered out upstream;
+   * matching treats null as adult) */
+  audience: AudienceSchema.nullable().optional(),
   /** 0..1 */
   extractionConfidence: z.number().min(0).max(1),
   lastSeenAt: z.number(),

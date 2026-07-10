@@ -191,10 +191,26 @@ export function createJsonldConnector(
 
       // ── product-URL filter + cap (skips logged, never silent) ─────────
       const pattern = new RegExp(store.productUrlPattern, 'i');
+      // per-store exclusion escape hatch (kids/junior lines living under a
+      // dedicated URL path — audience gate, founder bug 2026-07-09)
+      const excludePatterns = (store.excludeUrlPatterns ?? []).map((p) => new RegExp(p, 'i'));
+      let excludedByPattern = 0;
       const matched = orderProductUrls(
-        [...pageUrls].filter((u) => pattern.test(u)),
+        [...pageUrls].filter((u) => {
+          if (!pattern.test(u)) return false;
+          if (excludePatterns.some((re) => re.test(u))) {
+            excludedByPattern += 1;
+            return false;
+          }
+          return true;
+        }),
         lastmodByUrl,
       );
+      if (excludedByPattern > 0) {
+        log.info(
+          `[${sourceId}] excludeUrlPatterns skipped ${excludedByPattern} URL(s)`,
+        );
+      }
       const toCrawl = matched.slice(0, maxPages);
       log.info(
         `[${sourceId}] discovery: ${pageUrls.size} sitemap URLs → ${matched.length} product URLs`,

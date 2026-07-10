@@ -77,6 +77,7 @@ const DDL = [
     sleeve              TEXT,
     pattern             TEXT,
     occasion_json       TEXT NOT NULL DEFAULT '[]',
+    audience            TEXT,
     attribute_vector_json TEXT NOT NULL DEFAULT '{}',
     extraction_confidence REAL NOT NULL DEFAULT 0,
     extracted_at        INTEGER NOT NULL,

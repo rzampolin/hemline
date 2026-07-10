@@ -70,6 +70,7 @@ export function rowToListing(
     fabric: extraction?.fabric ?? null,
     neckline: extraction?.neckline ?? null,
     silhouette: (extraction?.silhouette ?? null) as Silhouette | null,
+    audience: (extraction?.audience ?? null) as Listing['audience'],
     extractionConfidence: extraction?.extractionConfidence ?? 0,
     lastSeenAt: row.lastSeenAt,
     firstSeenAt: row.firstSeenAt,

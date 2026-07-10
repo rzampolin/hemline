@@ -123,6 +123,24 @@ export function imageUrls(v: unknown): string[] {
   return urls;
 }
 
+/**
+ * image: ImageObject[] → alt/caption/name texts. Audience copy sometimes
+ * lives ONLY here (live-probed 2026-07-09: shopdoen.com ImageObject.name
+ * "Young girl in a plaid dress" on an otherwise adult-reading kids-line PDP).
+ * Callers should drop entries that merely echo the product title.
+ */
+export function imageAltTexts(v: unknown): string[] {
+  const arr = Array.isArray(v) ? v : v == null ? [] : [v];
+  const alts: string[] = [];
+  for (const item of arr) {
+    if (typeof item !== 'object' || item === null) continue;
+    const node = item as JsonLdNode;
+    const alt = asString(node.caption) ?? asString(node.alternateName) ?? asString(node.name);
+    if (alt && !alts.includes(alt)) alts.push(alt);
+  }
+  return alts;
+}
+
 const IN_STOCK_RE = /instock|instoreonly|onlineonly|limitedavailability|preorder|presale/i;
 const OUT_OF_STOCK_RE = /outofstock|soldout|discontinued/i;
 

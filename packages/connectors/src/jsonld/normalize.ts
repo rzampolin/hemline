@@ -16,6 +16,7 @@ import type { RawListing } from '@hemline/contracts';
 import { resolveBrand, type BrandStrategyInfo } from '../framework/brand';
 import {
   attributeHintsFromText,
+  detectChildAudience,
   isDressText,
   looksLikeSizeLabel,
   NOT_A_DRESS_RE,
@@ -29,6 +30,7 @@ import {
   extractJsonLdBlocks,
   extractOgImage,
   flattenOffers,
+  imageAltTexts,
   imageUrls,
   sizeFromOfferName,
   sizesFromAdditionalProperty,
@@ -52,6 +54,11 @@ export interface JsonldStoreInfo extends BrandStrategyInfo {
    * emit integer cents in the `price` field (seen live: forloveandlemons.com)
    */
   priceDivisor?: number;
+  /**
+   * case-insensitive regexes: product URLs matching ANY are skipped before
+   * crawling (per-store kids/junior line escape hatch, e.g. "/kids?/").
+   */
+  excludeUrlPatterns?: string[];
 }
 
 const DESCRIPTION_MAX = 2000;
@@ -187,6 +194,21 @@ export function normalizeJsonldProduct(
 
   const sizeLabels = [...rollup.sizeLabels];
   for (const s of extraSizes) if (!sizeLabels.includes(s)) sizeLabels.push(s);
+
+  // ── audience gate: kids items are never candidates (founder bug 2026-07-09)
+  // Product-level metadata only: title, category, URL slug, image alt copy
+  // (minus title echoes — most stores alt-text every photo with the product
+  // name). The DESCRIPTION is deliberately excluded: adult PDPs cross-sell
+  // "mini me" versions in body copy.
+  const urlText = decodeURIComponent(new URL(url).pathname).replace(/[-_/.]+/g, ' ');
+  const alts = imageAltTexts(node.image)
+    .concat(variants.flatMap((v) => imageAltTexts(v.image)))
+    .filter((alt) => alt.toLowerCase() !== cleanTitle.toLowerCase());
+  const audience = detectChildAudience({
+    text: [cleanTitle, category, urlText, alts.join('\n')].join('\n'),
+    sizeLabels,
+  });
+  if (audience.child) return null;
 
   let images = imageUrls(node.image).map(decodeXmlEntities);
   if (images.length === 0) {

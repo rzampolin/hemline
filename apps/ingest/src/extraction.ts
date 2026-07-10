@@ -186,6 +186,7 @@ export async function runExtraction(
           sleeve: attrs.sleeve,
           pattern: attrs.pattern,
           occasionJson: JSON.stringify(attrs.occasions),
+          audience: attrs.audience ?? null,
           attributeVectorJson: JSON.stringify(attrs.attributeVector),
           extractionConfidence: attrs.confidence,
           extractedAt: now,

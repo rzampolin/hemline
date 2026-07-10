@@ -158,6 +158,14 @@ export const extractions = sqliteTable(
     sleeve: text('sleeve'),
     pattern: text('pattern'),
     occasionJson: text('occasion_json').notNull().default('[]'),
+    /**
+     * Additive (2026-07-09 data-eng, kids-in-catalog founder bug): who the
+     * garment is for — 'adult' | 'child' | NULL (unknown; treated as adult by
+     * every filter — never nuke coverage on an unknown). Written by the Haiku
+     * extraction (which sees the on-model photo — a kid model is unmistakable)
+     * and by the purge script's vision recheck.
+     */
+    audience: text('audience'),
     /** sparse {tag: weight} for similarity */
     attributeVectorJson: text('attribute_vector_json').notNull().default('{}'),
     /** 0..1 */
