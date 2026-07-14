@@ -151,6 +151,24 @@ export const AnalyticsEventSchema = z.discriminatedUnion('type', [
     .strict(),
   z.object({ type: z.literal('listing_unsaved'), props: z.object({}).strict() }).strict(),
 
+  // ── paste-a-dress-link fit check (additive, 2026-07-13)
+  z
+    .object({
+      type: z.literal('fit_check_submitted'),
+      props: z
+        .object({
+          /** true when the pasted page yielded a garment (outcome 'ok') */
+          parsed: z.boolean(),
+          /** true when the pasted URL matched an existing catalog listing */
+          inCatalog: z.boolean(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({ type: z.literal('fit_check_result_clicked'), props: z.object({}).strict() })
+    .strict(),
+
   // ── color analysis (spec §5: opt-in rate)
   z
     .object({

@@ -11,3 +11,4 @@ export * from './color';
 export * from './api';
 export * from './analytics';
 export * from './fx';
+export * from './fit-check';
