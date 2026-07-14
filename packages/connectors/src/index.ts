@@ -9,3 +9,4 @@ export * from './fixtures/index';
 export * from './ebay/index';
 export * from './shopify/index';
 export * from './jsonld/index';
+export * from './external/index';
