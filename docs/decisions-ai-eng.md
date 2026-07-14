@@ -317,3 +317,51 @@ doc was ambiguous, contradictory, or silent. Everything else follows the doc.
       but request bytes are not billed. Egress moves onto our runner's
       network (one image download per uncached listing — the same bytes the
       embed sidecar already pulls).
+
+26. **Oversized-image rescue — downscale instead of reject (2026-07-13).**
+    The fetcher's 5MB cap (#25) hard-failed `too_large`, which starved ~64
+    dresses of hem estimates (rows settled `not_estimable`) and silently
+    downgraded some extractions to text-only. Now the 5MB API limit is a
+    DOWNSCALE trigger, not a rejection: bodies are streamed up to a 20MB hard
+    abort ceiling (`DEFAULT_HARD_MAX_IMAGE_BYTES`; a declared Content-Length
+    over it short-circuits before download), media type is sniffed from magic
+    bytes as before, then anything over 5MB is resized with sharp (already a
+    package dependency via color analysis; external in the esbuild bundle,
+    present in the standalone node_modules) — longest edge 1200px, JPEG q80,
+    EXIF-rotated — landing far under the cap with ample pixels for vision
+    (Haiku ~1.15MP cap means >1200px was wasted tokens anyway). Downscale
+    failures (decode errors, or the rare still-over-cap result) keep the
+    `too_large` marker with a distinguishing detail. Additive API surface
+    only: `FetchedImage.downscaled?`, `ImageFetcherStats.downscales?`, new
+    options `hardMaxBytes`/`downscaleEdgePx`/`downscaleJpegQuality`.
+    - **Requeue** (`apps/ingest`): the too_large victims are terminal
+      `not_estimable` rows, and the failure DETAIL was never persisted, so a
+      targeted reset is impossible — `npm run extract:lengths --
+      --requeue-not-estimable [--dry-run]` resets ALL unprotected
+      `not_estimable` rows into the fresh queue (dry-run counts + quotes
+      first; genuinely unestimable photos re-settle terminally at
+      ~$0.0026/row, so the queue still drains).
+
+27. **Search synonym extensions from zero-result mining (2026-07-13).** Prod's
+    admin analytics (7d window, founder testing) had NO zero-result queries —
+    every topSearch returned results — so beyond the one real-data gap
+    ("funeral", unmapped) the additions are plausible fashion-vocabulary gaps.
+    They live in `search/parse.ts`, NOT `extraction/taxonomy.ts`: they are
+    QUERY vocabulary (shoppers type "LBD"; sellers don't title dresses that),
+    and extending the shared tables would change extraction output. Three
+    mechanisms:
+    - `SEARCH_COLOR_SYNONYMS` (consuming, like COLOR_TABLE): coral/fuchsia/
+      magenta→pink, mint→green, turquoise/aqua/indigo→blue, maroon→red,
+      peach→orange, champagne→metallic.
+    - `VIBE_SYNONYMS` (NON-consuming — the word keeps its lexical + semantic
+      value, and additionally boosts attributes so these queries survive
+      keyless/no-sidecar deployments; soft only, per the hard/soft rule):
+      sundress→casual+vacation; lbd/"little black dress"→black+cocktail+party;
+      funeral→formal+black; boho/bohemian→floral+tent; cottagecore→floral+
+      gingham; preppy→gingham+plaid; minimalist→solid.
+    - **"gown" widened**: was floor-only (hard); catalogs class gowns maxi OR
+      floor, so a floor-only hard filter starved gown queries. Now
+      maxi+floor hard + a soft formal boost (`GOWN_RE`, consumed before
+      LENGTH_KEYWORDS). "summer" was deliberately left unmapped: it returns
+      results in prod (68 last run) and season words are semantic material by
+      design.
