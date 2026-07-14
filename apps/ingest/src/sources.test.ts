@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { buildConnectors, parseArgs } from './sources';
+import type { SourceConnector } from '@hemline/contracts';
+import { buildConnectors, isMockAllowed, parseArgs, shouldRunConnector } from './sources';
+import { createTestDb } from './testing/test-db';
 
 describe('buildConnectors — source/store selection', () => {
   it('default run includes fixtures, ebay, verified shopify AND verified jsonld stores', () => {
@@ -57,5 +59,49 @@ describe('parseArgs', () => {
 
   it('parses --no-embed (mirrors --no-extract)', () => {
     expect(parseArgs(['--no-embed'])).toMatchObject({ extract: true, embed: false });
+  });
+});
+
+describe('shouldRunConnector — production mock-mode ban (prod incident 2026-07-13)', () => {
+  const mockConnector = (configured: boolean): SourceConnector =>
+    ({
+      id: 'ebay',
+      kind: 'ebay',
+      defaultCadence: '0 */6 * * *',
+      isConfigured: () => configured,
+      fetchListings: async () => ({ listings: [], stats: { fetched: 0, errors: 0 } }),
+    }) as SourceConnector;
+
+  it('unconfigured connector is BANNED in production (the keyless-eBay-cron bug)', () => {
+    const { db, cleanup } = createTestDb();
+    try {
+      const gate = shouldRunConnector(db, mockConnector(false), {
+        NODE_ENV: 'production',
+      } as NodeJS.ProcessEnv);
+      expect(gate.run).toBe(false);
+      expect(gate.reason).toMatch(/mock/i);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('unconfigured connector still runs in dev; configured runs everywhere; escape hatch honored', () => {
+    const { db, cleanup } = createTestDb();
+    try {
+      expect(shouldRunConnector(db, mockConnector(false), {} as NodeJS.ProcessEnv).run).toBe(true);
+      expect(
+        shouldRunConnector(db, mockConnector(true), { NODE_ENV: 'production' } as NodeJS.ProcessEnv)
+          .run,
+      ).toBe(true);
+      expect(
+        shouldRunConnector(db, mockConnector(false), {
+          NODE_ENV: 'production',
+          INGEST_ALLOW_MOCK: 'true',
+        } as NodeJS.ProcessEnv).run,
+      ).toBe(true);
+      expect(isMockAllowed({ NODE_ENV: 'production' } as NodeJS.ProcessEnv)).toBe(false);
+    } finally {
+      cleanup();
+    }
   });
 });

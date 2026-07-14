@@ -13,7 +13,7 @@
  */
 import { runPipeline, type PipelineResult } from './pipeline';
 import { startScheduler } from './schedule';
-import { buildConnectors, isSourceEnabled, openDb, parseArgs } from './sources';
+import { buildConnectors, openDb, parseArgs, shouldRunConnector } from './sources';
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
@@ -29,8 +29,9 @@ async function main(): Promise<void> {
   const results: { id: string; result?: PipelineResult; error?: string }[] = [];
 
   for (const connector of connectors) {
-    if (!isSourceEnabled(db, connector.id)) {
-      console.log(`[ingest:${connector.id}] disabled in sources table — skipping`);
+    const gate = shouldRunConnector(db, connector);
+    if (!gate.run) {
+      console.log(`[ingest:${connector.id}] ${gate.reason} — skipping`);
       continue;
     }
     try {

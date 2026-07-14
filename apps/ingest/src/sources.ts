@@ -108,6 +108,35 @@ export function isSourceEnabled(db: Db, sourceId: string): boolean {
   return row?.enabled !== false;
 }
 
+/**
+ * Mock-mode connectors (isConfigured() === false, e.g. eBay without API keys)
+ * must NEVER ingest in production — found live 2026-07-13: the keyless eBay
+ * cron had been re-upserting its 20-item sample file into the prod catalog
+ * every 6 hours (fake listings, dead example URLs, no images). Mock ingest is
+ * a dev affordance only: allowed when NODE_ENV !== 'production', or with an
+ * explicit INGEST_ALLOW_MOCK=true escape hatch.
+ */
+export function isMockAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.INGEST_ALLOW_MOCK === 'true') return true;
+  return env.NODE_ENV !== 'production';
+}
+
+/** Full pre-run gate: admin toggle + the production mock-mode ban. */
+export function shouldRunConnector(
+  db: Db,
+  connector: SourceConnector,
+  env: NodeJS.ProcessEnv = process.env,
+): { run: boolean; reason: string | null } {
+  if (!isSourceEnabled(db, connector.id)) return { run: false, reason: 'disabled in sources table' };
+  if (!connector.isConfigured(env) && !isMockAllowed(env)) {
+    return {
+      run: false,
+      reason: 'not configured (mock mode) — mock ingest is disabled in production',
+    };
+  }
+  return { run: true, reason: null };
+}
+
 /** Per-source cadence: sources.cadence_cron override, else connector default. */
 export function cadenceFor(db: Db, connector: SourceConnector): string {
   const row = db

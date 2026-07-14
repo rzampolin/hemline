@@ -13,7 +13,7 @@ import cron from 'node-cron';
 import type { SourceConnector } from '@hemline/contracts';
 import { ensureSchema, type Db } from '@hemline/db';
 import { runPipeline } from './pipeline';
-import { buildConnectors, cadenceFor, isSourceEnabled, openDb, parseArgs } from './sources';
+import { buildConnectors, cadenceFor, openDb, parseArgs, shouldRunConnector } from './sources';
 import { drainVerificationQueue, runRollingVerification, verifyEnvConfig } from './verification';
 
 export interface ScheduledJob {
@@ -35,8 +35,9 @@ export function startScheduler(db: Db, connectors: SourceConnector[]): Scheduled
     }
     const task = cron.schedule(cadence, () => {
       chain = chain.then(async () => {
-        if (!isSourceEnabled(db, connector.id)) {
-          console.log(`[ingest:watch] ${connector.id} disabled — tick skipped`);
+        const gate = shouldRunConnector(db, connector);
+        if (!gate.run) {
+          console.log(`[ingest:watch] ${connector.id} ${gate.reason} — tick skipped`);
           return;
         }
         try {
