@@ -19,10 +19,27 @@
  * The docker/start.mjs supervisor performs the same check before spawning
  * (belt and braces: clearer error, no half-started container).
  */
+import { captureError } from './app/api/lib/error-capture';
+
 const PLACEHOLDER_SECRETS = new Set([
   'change-me-32-chars-minimum-random', // .env.example placeholder
   'hemline-dev-secret-do-not-use-in-prod', // session.ts dev fallback
 ]);
+
+/**
+ * Node-runtime body of the instrumentation.ts `onRequestError` hook (ops,
+ * 2026-07-13): records uncaught server errors into `app_errors` with the
+ * route path as context. captureError never throws — a broken db degrades
+ * to the console output Next already emits for these errors.
+ */
+export function captureRequestError(
+  err: unknown,
+  request: { path: string; method: string },
+  context: { routerKind: string; routePath: string; routeType: string },
+): void {
+  const route = `onRequestError:${context.routePath || request.path} (${request.method} ${context.routeType})`;
+  captureError(route, err);
+}
 
 export async function register(): Promise<void> {
   if (process.env.NODE_ENV !== 'production') return;

@@ -9,8 +9,8 @@
  * silently on 404 — a parallel workstream may ship that endpoint; we render
  * it opportunistically rather than owning it.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { SourceHealth } from '@hemline/db';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import type { AppErrorGroup, AppErrorStats, SourceHealth } from '@hemline/db';
 import { Button, cn, ErrorState, formatAgo, Skeleton, Spinner, Toggle } from '@hemline/ui';
 import { apiGet, fmtInt, fmtPct, NotFoundError, type AdminIngestPayload } from './lib';
 import { ExtractionQaPanel } from './extraction-qa';
@@ -94,6 +94,7 @@ export function AdminDashboard() {
         <div className="space-y-8">
           <CatalogHeader payload={payload} />
           <CrawlerHealthPanel sources={payload.sources} />
+          <ErrorsPanel />
           <ExtractionQaPanel />
           <ClickoutsPanel clickouts={payload.clickouts} sources={payload.sources} />
           {events != null && <EventsPanel data={events} />}
@@ -358,6 +359,106 @@ function ClickoutsPanel({
           </tbody>
         </table>
       </div>
+    </Panel>
+  );
+}
+
+/* ── server errors panel (ops, 2026-07-13) ──────────────────────────── */
+
+interface AdminErrorsPayload {
+  errors: AppErrorGroup[];
+  stats: AppErrorStats;
+}
+
+/**
+ * Deduped server-error groups from GET /api/admin/errors (`app_errors`
+ * table). Self-fetching on the same 60s cadence as the main payload; click a
+ * row to expand the latest stack.
+ */
+function ErrorsPanel() {
+  const [payload, setPayload] = useState<AdminErrorsPayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [openHash, setOpenHash] = useState<string | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setPayload(await apiGet<AdminErrorsPayload>('/api/admin/errors?limit=50'));
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    };
+    void load();
+    const t = setInterval(() => void load(), REFRESH_MS);
+    return () => clearInterval(t);
+  }, []);
+
+  const rows = payload?.errors ?? [];
+  return (
+    <Panel
+      title="Errors"
+      subtitle="Server-side errors, deduped by stack (route catch paths + uncaught request errors). Bounded table — pruned to 500 groups / 30 days."
+      actions={
+        payload && (
+          <span className="text-xs text-ink-faint">
+            {fmtInt(payload.stats.groups)} groups · ~{fmtInt(payload.stats.lastHour)} in the last hour
+          </span>
+        )
+      }
+    >
+      {error && <p className="text-sm text-accent">Failed to load errors: {error}</p>}
+      {!error && rows.length === 0 && (
+        <p className="text-sm text-ink-faint">No server errors recorded. Quiet is good.</p>
+      )}
+      {rows.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] border-collapse">
+            <thead>
+              <tr className="border-b border-line">
+                <th className={TH}>Route</th>
+                <th className={TH}>Message</th>
+                <th className={cn(TH, 'text-right')}>Count</th>
+                <th className={TH}>First seen</th>
+                <th className={TH}>Last seen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <React.Fragment key={r.stackHash}>
+                  <tr
+                    className="cursor-pointer border-b border-line/60 hover:bg-parchment/60"
+                    onClick={() => setOpenHash(openHash === r.stackHash ? null : r.stackHash)}
+                  >
+                    <td className={cn(TD, 'whitespace-nowrap font-medium')}>{r.route}</td>
+                    <td className={TD}>
+                      <span className="line-clamp-2 max-w-96 break-words" title={r.message}>
+                        {r.message}
+                      </span>
+                    </td>
+                    <td className={cn(TD, 'text-right tabular-nums')}>{fmtInt(r.count)}</td>
+                    <td className={cn(TD, 'whitespace-nowrap text-ink-soft')}>
+                      <span title={new Date(r.firstSeenAt).toLocaleString()}>{formatAgo(r.firstSeenAt)}</span>
+                    </td>
+                    <td className={cn(TD, 'whitespace-nowrap text-ink-soft')}>
+                      <span title={new Date(r.lastSeenAt).toLocaleString()}>{formatAgo(r.lastSeenAt)}</span>
+                    </td>
+                  </tr>
+                  {openHash === r.stackHash && r.stack && (
+                    <tr className="border-b border-line/60">
+                      <td colSpan={5} className="px-2 py-2">
+                        <pre className="max-h-56 overflow-auto rounded-lg bg-parchment p-3 text-xs text-ink-soft">
+                          {r.stack}
+                        </pre>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </Panel>
   );
 }
