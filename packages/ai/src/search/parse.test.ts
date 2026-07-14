@@ -117,7 +117,11 @@ describe('taxonomy mapping (soft signals + hard length)', () => {
   it('length words become HARD lengthClasses', () => {
     expect(parse('mini').hard.lengthClasses).toEqual(['mini']);
     expect(parse('knee length').hard.lengthClasses).toEqual(['knee']);
-    expect(parse('gown').hard.lengthClasses).toEqual(['floor']);
+    // "gown" widened 2026-07: catalogs class gowns maxi OR floor, and a
+    // floor-only filter starved gown queries — plus a soft formal boost.
+    expect(parse('gown').hard.lengthClasses).toEqual(['maxi', 'floor']);
+    expect(parse('gown').soft.occasions).toEqual(['formal']);
+    expect(parse('floor-length').hard.lengthClasses).toEqual(['floor']);
   });
 
   it('color synonyms map to families (blush→pink, navy→blue) — soft', () => {
@@ -146,6 +150,94 @@ describe('taxonomy mapping (soft signals + hard length)', () => {
     expect(parse('office').soft.occasions).toEqual(['work']);
     expect(parse('beach').soft.occasions).toEqual(['vacation']);
     expect(parse('evening').soft.occasions).toEqual(['formal']);
+  });
+});
+
+describe('search-side synonyms (2026-07 zero-result mining — analytics had no zero-result queries, so plausible fashion-vocabulary gaps + the real "funeral" query)', () => {
+  it('color synonyms map to families and are consumed like COLOR_TABLE entries', () => {
+    expect(parse('coral wrap').soft.colorFamilies).toEqual(['pink']);
+    expect(parse('fuchsia').soft.colorFamilies).toEqual(['pink']);
+    expect(parse('magenta').soft.colorFamilies).toEqual(['pink']);
+    expect(parse('mint midi').soft.colorFamilies).toEqual(['green']);
+    expect(parse('turquoise').soft.colorFamilies).toEqual(['blue']);
+    expect(parse('aqua slip').soft.colorFamilies).toEqual(['blue']);
+    expect(parse('indigo').soft.colorFamilies).toEqual(['blue']);
+    expect(parse('maroon').soft.colorFamilies).toEqual(['red']);
+    expect(parse('peach sundress').soft.colorFamilies).toEqual(['orange']);
+    expect(parse('champagne').soft.colorFamilies).toEqual(['metallic']);
+    // consumed: the color word leaves the residual, soft signal only
+    const p = parse('coral dress');
+    expect(p.residualTokens).toEqual([]);
+    expect(p.signals).toEqual([
+      { kind: 'color', term: 'coral', value: 'pink', hard: false },
+    ]);
+  });
+
+  it('"gown" (also ball/evening gowns) → HARD maxi+floor, soft formal', () => {
+    for (const q of ['gown', 'ball gown', 'evening gowns']) {
+      const p = parse(q);
+      expect(p.hard.lengthClasses, q).toEqual(['maxi', 'floor']);
+      expect(p.soft.occasions, q).toEqual(['formal']);
+    }
+    // both widened classes render as removable chips
+    expect(parse('gown').signals.filter((s) => s.kind === 'length')).toEqual([
+      { kind: 'length', term: 'gown', value: 'maxi', hard: true },
+      { kind: 'length', term: 'gown', value: 'floor', hard: true },
+    ]);
+  });
+
+  it('"sundress" boosts casual+vacation but STAYS lexical/semantic (non-consuming)', () => {
+    const p = parse('sundress');
+    expect(p.soft.occasions).toEqual(['casual', 'vacation']);
+    expect(p.residualTokens).toEqual(['sundress']);
+    expect(p.semanticText).toBe('sundress');
+  });
+
+  it('"lbd" / "little black dress" → black + cocktail/party boosts', () => {
+    const abbr = parse('lbd');
+    expect(abbr.soft.colorFamilies).toEqual(['black']);
+    expect(abbr.soft.occasions).toEqual(['cocktail', 'party']);
+    expect(abbr.residualTokens).toEqual(['lbd']);
+    const spelled = parse('little black dress');
+    expect(spelled.soft.colorFamilies).toEqual(['black']);
+    expect(spelled.soft.occasions).toEqual(['cocktail', 'party']);
+  });
+
+  it('"funeral" (real prod query, 7d topSearches) → formal + black boosts', () => {
+    const p = parse('funeral dress');
+    expect(p.soft.occasions).toEqual(['formal']);
+    expect(p.soft.colorFamilies).toEqual(['black']);
+    expect(p.residualTokens).toEqual(['funeral']); // still lexical/semantic
+  });
+
+  it('aesthetic vocabulary → soft attribute boosts, word kept for lexical/semantic', () => {
+    const boho = parse('boho maxi');
+    expect(boho.soft.patterns).toEqual(['floral']);
+    expect(boho.soft.silhouettes).toEqual(['tent']);
+    expect(boho.residualTokens).toContain('boho');
+    expect(parse('bohemian').soft.patterns).toEqual(['floral']);
+
+    const cottage = parse('cottagecore');
+    expect(cottage.soft.patterns).toEqual(['floral', 'gingham']);
+    expect(cottage.residualTokens).toEqual(['cottagecore']);
+
+    expect(parse('preppy').soft.patterns).toEqual(['gingham', 'plaid']);
+    expect(parse('minimalist').soft.patterns).toEqual(['solid']);
+    expect(parse('minimal').soft.patterns).toEqual(['solid']);
+  });
+
+  it('synonym-derived signals respect the hard/soft rule (only gown lengths are hard)', () => {
+    const p = parse('coral boho gown for a funeral');
+    for (const s of p.signals) {
+      expect(s.hard, `${s.kind}:${s.value}`).toBe(s.kind === 'length');
+    }
+  });
+
+  it('an un-chipped vibe synonym term is excluded from interpretation', () => {
+    const p = parse('sundress', ['sundress']);
+    expect(p.soft.occasions).toEqual([]);
+    expect(p.signals).toEqual([]);
+    expect(p.residualTokens).toEqual(['sundress']); // stays lexical
   });
 });
 
@@ -238,7 +330,7 @@ const EVAL_SET: Array<[string, Expected]> = [
   ],
   [
     'elegant evening gown',
-    { hard: { lengthClasses: ['floor'] }, soft: { occasions: ['formal'] }, residual: ['elegant'] },
+    { hard: { lengthClasses: ['maxi', 'floor'] }, soft: { occasions: ['formal'] }, residual: ['elegant'] },
   ],
   [
     'reformation silk dress',
