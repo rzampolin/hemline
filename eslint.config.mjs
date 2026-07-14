@@ -25,13 +25,15 @@ export default tseslint.config(
     },
   },
   {
-    files: ['scripts/**/*.mjs', 'docker/**/*.mjs'],
+    files: ['scripts/**/*.mjs', 'docker/**/*.mjs', 'apps/web/scripts/**/*.mjs'],
     languageOptions: {
       globals: {
         console: 'readonly',
         process: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
+        URL: 'readonly',
+        Buffer: 'readonly',
       },
     },
   },
