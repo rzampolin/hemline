@@ -14,7 +14,7 @@
  *
  * Run: node apps/web/scripts/derive-mock-listings.mjs   (idempotent, committed output)
  */
-/* global console, URLSearchParams */
+/* global URLSearchParams */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
