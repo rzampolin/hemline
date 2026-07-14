@@ -78,13 +78,40 @@ if (process.env.NODE_ENV === 'production') {
 const children = new Map(); // name → ChildProcess
 let shuttingDown = false;
 
-function prefix(name, stream, out) {
+// ── supervisor status file (ops, 2026-07-13) ────────────────────────────────
+// /api/health reads this to self-diagnose "litestream child down" (and to
+// surface child crash context) without the web process being able to see the
+// supervisor's children directly. Written on every spawn/exit — tiny JSON,
+// /tmp only. Honest limits (docs/decisions-ops.md): if the supervisor itself
+// dies the file goes stale (but then the whole container restarts), and the
+// file resets on every boot (/tmp is container-local).
+// /tmp/litestream-alive is a second, dumber signal: touched on every
+// litestream spawn/restart — the documented heartbeat fallback for health.
+const STATUS_FILE = process.env.SUPERVISOR_STATUS_FILE ?? '/tmp/hemline-supervisor.json';
+const LITESTREAM_HEARTBEAT = process.env.LITESTREAM_HEARTBEAT_FILE ?? '/tmp/litestream-alive';
+const STDERR_TAIL_LINES = 20;
+const childStatus = {}; // name → { up, pid, startedAt, restarts, lastExit, stderrTail }
+
+function writeStatus() {
+  try {
+    fs.writeFileSync(STATUS_FILE, JSON.stringify({ updatedAt: Date.now(), children: childStatus }));
+  } catch (err) {
+    console.warn(`[start] could not write ${STATUS_FILE}: ${err.message}`);
+  }
+}
+
+function prefix(name, stream, out, tail) {
   let buf = '';
   stream.on('data', (chunk) => {
     buf += chunk.toString();
     let nl;
     while ((nl = buf.indexOf('\n')) !== -1) {
-      out.write(`[${name}] ${buf.slice(0, nl)}\n`);
+      const line = buf.slice(0, nl);
+      out.write(`[${name}] ${line}\n`);
+      if (tail) {
+        tail.push(line);
+        if (tail.length > STDERR_TAIL_LINES) tail.shift();
+      }
       buf = buf.slice(nl + 1);
     }
   });
@@ -100,11 +127,35 @@ function launch(name, argv, { onExit }) {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   children.set(name, child);
+  const stderrTail = []; // last N stderr lines — crash context in the status file
   prefix(name, child.stdout, process.stdout);
-  prefix(name, child.stderr, process.stderr);
+  prefix(name, child.stderr, process.stderr, stderrTail);
+  const prev = childStatus[name];
+  childStatus[name] = {
+    up: true,
+    pid: child.pid,
+    startedAt: Date.now(),
+    restarts: prev ? (prev.restarts ?? 0) + 1 : 0,
+    lastExit: prev?.lastExit ?? null,
+  };
+  writeStatus();
+  if (name === 'litestream') {
+    try {
+      fs.writeFileSync(LITESTREAM_HEARTBEAT, String(Date.now()));
+    } catch {
+      /* heartbeat is best-effort */
+    }
+  }
   console.log(`[start] ${name} up (pid ${child.pid}) — ${argv.join(' ')}`);
   child.on('exit', (code, signal) => {
     children.delete(name);
+    childStatus[name] = {
+      ...childStatus[name],
+      up: false,
+      lastExit: { code: code ?? null, signal: signal ?? null, at: Date.now() },
+      stderrTail: stderrTail.slice(),
+    };
+    writeStatus();
     if (!shuttingDown) onExit(code, signal);
   });
   return child;

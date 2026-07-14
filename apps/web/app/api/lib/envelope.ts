@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import type { ZodError } from 'zod';
 import type { ApiResponse } from '@hemline/contracts';
+import { captureError } from './error-capture';
 
 export function ok<T>(data: T, init?: ResponseInit): NextResponse {
   const body: ApiResponse<T> = { ok: true, data };
@@ -22,8 +23,13 @@ export function zodFail(err: ZodError): NextResponse {
   return fail('invalid_request', `${where ? `${where}: ` : ''}${first?.message ?? 'invalid body'}`, 400);
 }
 
-/** Uniform catch-all: log server-side, return a stable envelope. */
+/**
+ * Uniform catch-all: log server-side, record into the `app_errors` tracking
+ * table (deduped/bounded — ops 2026-07-13; captureError never throws), and
+ * return a stable envelope.
+ */
 export function serverError(route: string, err: unknown): NextResponse {
   console.error(`[api:${route}]`, err);
+  captureError(`api:${route}`, err);
   return fail('internal_error', err instanceof Error ? err.message : 'unexpected error', 500);
 }

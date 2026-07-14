@@ -32,6 +32,12 @@ RUN node -e "require('better-sqlite3'); console.log('better-sqlite3 native bindi
 # ── build: Next standalone + esbuild bundles for scheduler/ingest/seed ──────
 FROM deps AS build
 COPY . .
+# Canonical public origin (ops, 2026-07-13 — custom-domain prep, docs/DOMAIN.md).
+# NEXT_PUBLIC_* vars are inlined into client bundles at BUILD time, so a domain
+# change means updating fly.toml [build.args] and redeploying. Server code
+# (metadataBase) reads the runtime env, which the runner stage also sets.
+ARG NEXT_PUBLIC_APP_URL=https://hemline.fly.dev
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
@@ -51,6 +57,7 @@ RUN ESB="node_modules/.bin/esbuild --bundle --platform=node --format=esm --targe
  && eval "$ESB apps/ingest/src/estimate-lengths.ts --outfile=dist/impl/extract-lengths.impl.mjs" \
  && eval "$ESB apps/ingest/src/verify.ts           --outfile=dist/impl/verify-listings.impl.mjs" \
  && eval "$ESB scripts/purge-kids.ts       --outfile=dist/impl/purge-kids.impl.mjs" \
+ && eval "$ESB docker/restore-drill.ts     --outfile=dist/impl/restore-drill.impl.mjs" \
  && printf 'import "./impl/ingest-scheduler.impl.mjs";\n' > dist/ingest-scheduler.mjs \
  && printf 'import "./impl/ingest-run.impl.mjs";\n'       > dist/ingest-run.mjs \
  && printf 'import "./impl/seed.impl.mjs";\n'             > dist/seed.mjs \
@@ -58,7 +65,8 @@ RUN ESB="node_modules/.bin/esbuild --bundle --platform=node --format=esm --targe
  && printf 'import "./impl/extract-upgrade.impl.mjs";\n'  > dist/extract-upgrade.mjs \
  && printf 'import "./impl/extract-lengths.impl.mjs";\n'  > dist/extract-lengths.mjs \
  && printf 'import "./impl/verify-listings.impl.mjs";\n'  > dist/verify-listings.mjs \
- && printf 'import "./impl/purge-kids.impl.mjs";\n'       > dist/purge-kids.mjs
+ && printf 'import "./impl/purge-kids.impl.mjs";\n'       > dist/purge-kids.mjs \
+ && printf 'import "./impl/restore-drill.impl.mjs";\n'    > dist/restore-drill.mjs
 
 # ── ml: FashionSigLIP venv + weights, baked at BUILD time ───────────────────
 # Same Debian base as the runtime so the venv's /usr/bin/python3.11 symlinks
@@ -108,7 +116,9 @@ RUN ARCH=$([ "$TARGETARCH" = "amd64" ] && echo x86_64 || echo "$TARGETARCH") \
 
 # ── runtime: standalone server + bundles + supervisor + ml sidecar ──────────
 FROM ${NODE_IMAGE} AS runner
+ARG NEXT_PUBLIC_APP_URL=https://hemline.fly.dev
 ENV NODE_ENV=production \
+    NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \

@@ -12,9 +12,18 @@ primary_region = "ewr" # pick the region closest to the founder; volume is creat
 [build]
   # Dockerfile at the repo root
 
+  [build.args]
+    # Canonical public origin — inlined into client bundles at BUILD time
+    # (NEXT_PUBLIC_*). When the custom domain lands, change BOTH this and the
+    # [env] copy below, then `fly deploy` (docs/DOMAIN.md).
+    NEXT_PUBLIC_APP_URL = "https://hemline.fly.dev"
+
 [env]
   DATABASE_PATH = "/data/hemline.db"
   PORT = "3000"
+  # runtime copy for server-side absolute URLs (metadataBase etc.) — keep in
+  # lockstep with [build.args] above (docs/DOMAIN.md)
+  NEXT_PUBLIC_APP_URL = "https://hemline.fly.dev"
   # crawler behavior (override with `fly secrets set` / `fly machine update -e`)
   INGEST_ENABLE_SHOPIFY = "true"
   INGEST_ENABLE_JSONLD = "true"

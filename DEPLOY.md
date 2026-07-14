@@ -253,10 +253,21 @@ fly secrets unset LITESTREAM_REPLICATE        # restarts; replication resumes
 curl -s https://hemline.fly.dev/api/health | python3 -m json.tool
 ```
 
-**Restore drill:** run Scenario A's steps 1–2 (restore + verify, no swap)
-after enabling, and every month or two — a backup you've never restored
-doesn't exist. Older than 72h? Fall back to Fly volume snapshots
-(`fly volumes snapshots list`, step 9).
+**Restore drill:** automated (ops, 2026-07-13) — run it after enabling
+backups and every month or two; a backup you've never restored doesn't exist.
+
+```bash
+fly ssh console -C "node /app/dist/restore-drill.mjs"        # dry-run: prints the plan
+fly ssh console -C "node /app/dist/restore-drill.mjs --run"  # restores to /tmp, verifies, cleans up
+```
+
+It restores the replica to `/tmp/restore-drill.db` (hard-coded refusal to
+write anywhere near `/data`), runs `PRAGMA integrity_check` plus per-table
+row-count comparison against the live db (opened read-only), prints a
+PASS/FAIL report, and deletes the temp file. Exit code 0 = PASS. Flags:
+`--timestamp <ISO>` for point-in-time, `--keep` to inspect the restored copy,
+`--tolerance 0.05` to widen the count window. Older than 72h? Fall back to
+Fly volume snapshots (`fly volumes snapshots list`, step 9).
 
 ## Cost expectations (2026-07 Fly pricing)
 
