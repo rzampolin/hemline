@@ -111,12 +111,26 @@ describe('stage 1: vocabulary-mapped queries return results the LIKE gate lost',
     expect(res.interpreted!.vibe).toContain('tapestry');
   });
 
-  it('vibe-only unknown vocabulary without vectors → honest empty set (no keyword noise)', async () => {
+  it('"cottagecore" is rescued by the vibe-synonym boosts (was an honest zero without vectors)', async () => {
     const res = await search('q=cottagecore');
+    // 2026-07 zero-result mining: aesthetic vocabulary now carries
+    // deterministic soft pattern boosts (floral/gingham), so the evidence
+    // gate keeps attribute-matched dresses even keyless + vectorless.
+    expect(res.totalMatched).toBeGreaterThan(0);
+    expect(res.totalMatched).toBeLessThan(30); // gated, not the whole catalog
+    expect(res.interpreted!.signals).toContainEqual(
+      expect.objectContaining({ kind: 'pattern', value: 'floral', hard: false }),
+    );
+    expect(res.interpreted!.vibe).toEqual(['cottagecore']); // still semantic material
+    expect(res.interpreted!.semantic).toBe(false);
+  });
+
+  it('vibe-only TRULY unknown vocabulary without vectors → honest empty set (no keyword noise)', async () => {
+    const res = await search('q=brutalist');
     // no vectors + no lexical/attribute hits: gate empties the result rather
     // than dumping the whole catalog
     expect(res.totalMatched).toBe(0);
-    expect(res.interpreted!.vibe).toEqual(['cottagecore']);
+    expect(res.interpreted!.vibe).toEqual(['brutalist']);
     expect(res.interpreted!.semantic).toBe(false);
   });
 });

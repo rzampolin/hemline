@@ -122,6 +122,70 @@ const PRICE_RANGE_RES = [
 
 const SIZE_RE = /\b(?:size|sz|us)\s*(\d{1,2})\b/i;
 
+/* ── search-side synonym tables (2026-07 zero-result mining) ────────────────
+ * Prod's admin analytics had NO zero-result queries yet (every founder search
+ * returned results), so beyond the two real-data gaps ("funeral"; "gown"
+ * already partially mapped) these are the most plausible fashion-vocabulary
+ * gaps. They live HERE, not in extraction/taxonomy.ts, because they are
+ * QUERY vocabulary — sellers don't title dresses "LBD", shoppers type it —
+ * and extending the shared extraction tables would change extraction output.
+ */
+
+/**
+ * Color words shoppers use that the extraction COLOR_TABLE lacks. Consumed
+ * exactly like COLOR_TABLE entries (soft family signal, token leaves the
+ * residual). Families must exist in COLOR_TABLE (COLOR_FAMILIES validation).
+ */
+export const SEARCH_COLOR_SYNONYMS: Array<[RegExp, { family: string }]> = [
+  [/\bcoral\b/i, { family: 'pink' }],
+  [/\bfuchsia\b/i, { family: 'pink' }],
+  [/\bmagenta\b/i, { family: 'pink' }],
+  [/\bmint\b/i, { family: 'green' }],
+  [/\bturquoise\b/i, { family: 'blue' }],
+  [/\baqua\b/i, { family: 'blue' }],
+  [/\bindigo\b/i, { family: 'blue' }],
+  [/\bmaroon\b/i, { family: 'red' }],
+  [/\bpeach\b/i, { family: 'orange' }],
+  [/\bchampagne\b/i, { family: 'metallic' }],
+];
+
+interface VibeSynonym {
+  occasions?: string[];
+  colorFamilies?: string[];
+  patterns?: string[];
+  silhouettes?: Silhouette[];
+}
+
+/**
+ * Aesthetic/occasion vocabulary → soft ranking boosts. Matched
+ * NON-consumingly: the word keeps its lexical + semantic value (a listing
+ * titled "Cottagecore gingham midi" must still match the query "cottagecore"
+ * lexically), it just ALSO carries deterministic attribute boosts so these
+ * queries survive keyless/no-sidecar deployments. Soft only — the hard/soft
+ * rule stands: vibe language never filters.
+ */
+export const VIBE_SYNONYMS: Array<[RegExp, VibeSynonym]> = [
+  [/\bsundress(?:es)?\b/i, { occasions: ['casual', 'vacation'] }],
+  [
+    /\b(?:lbd|little\s+black\s+dress)\b/i,
+    { colorFamilies: ['black'], occasions: ['cocktail', 'party'] },
+  ],
+  // real prod query (7d topSearches): "funeral" mapped to nothing
+  [/\bfunerals?\b/i, { occasions: ['formal'], colorFamilies: ['black'] }],
+  [/\bboho(?:[-\s]?chic)?\b|\bbohemian\b/i, { patterns: ['floral'], silhouettes: ['tent'] }],
+  [/\bcottage[-\s]?core\b/i, { patterns: ['floral', 'gingham'] }],
+  [/\bpreppy\b/i, { patterns: ['gingham', 'plaid'] }],
+  [/\bminimal(?:ist)?\b/i, { patterns: ['solid'] }],
+];
+
+/**
+ * "gown" (ball/evening gown, plural too): a formal long-dress word. Hard
+ * length widened to BOTH maxi and floor — catalogs class gowns either way,
+ * and a floor-only filter starved "gown" queries of maxi-classed gowns —
+ * plus a soft formal boost.
+ */
+export const GOWN_RE = /\b(?:ball[\s-]+|evening[\s-]+)?gowns?\b/i;
+
 const toCents = (s: string): number => Math.round(Number(s) * 100);
 
 /** Blank a span in-place-safe: same length, spaces (offsets stay stable). */
@@ -319,6 +383,20 @@ export function parseQueryDeterministic(
   const semanticText = working.text.replace(/\s+/g, ' ').trim();
 
   // 4. length classes (hard — an explicit garment-length constraint)
+  //    4a. "gown" first (before LENGTH_KEYWORDS' floor rule claims it):
+  //        widened to maxi+floor, plus a soft formal boost.
+  for (const hit of consumeRegex(working, GOWN_RE)) {
+    for (const lc of ['maxi', 'floor'] as LengthClass[]) {
+      if (!hard.lengthClasses?.includes(lc)) {
+        hard.lengthClasses = [...(hard.lengthClasses ?? []), lc];
+        signals.push({ kind: 'length', term: hit.term, value: lc, hard: true });
+      }
+    }
+    if (!soft.occasions.includes('formal')) {
+      soft.occasions.push('formal');
+      signals.push({ kind: 'occasion', term: hit.term, value: 'formal', hard: false });
+    }
+  }
   for (const hit of consumeTable(working, LENGTH_KEYWORDS)) {
     if (!hard.lengthClasses?.includes(hit.value)) {
       hard.lengthClasses = [...(hard.lengthClasses ?? []), hit.value];
@@ -327,6 +405,33 @@ export function parseQueryDeterministic(
   }
 
   // 5. soft taxonomy signals (ranking boosts, never filters)
+  //    5a. vibe synonyms first, NON-consuming: the aesthetic word keeps its
+  //        lexical/semantic value and additionally boosts mapped attributes.
+  for (const [re, syn] of VIBE_SYNONYMS) {
+    const m = re.exec(working.text);
+    if (!m) continue;
+    const term = m[0].trim();
+    for (const o of syn.occasions ?? []) {
+      if (soft.occasions.includes(o)) continue;
+      soft.occasions.push(o);
+      signals.push({ kind: 'occasion', term, value: o, hard: false });
+    }
+    for (const c of syn.colorFamilies ?? []) {
+      if (soft.colorFamilies.includes(c)) continue;
+      soft.colorFamilies.push(c);
+      signals.push({ kind: 'color', term, value: c, hard: false });
+    }
+    for (const p of syn.patterns ?? []) {
+      if (soft.patterns.includes(p)) continue;
+      soft.patterns.push(p);
+      signals.push({ kind: 'pattern', term, value: p, hard: false });
+    }
+    for (const s of syn.silhouettes ?? []) {
+      if (soft.silhouettes.includes(s)) continue;
+      soft.silhouettes.push(s);
+      signals.push({ kind: 'silhouette', term, value: s, hard: false });
+    }
+  }
   for (const hit of consumeTable(working, SILHOUETTE_KEYWORDS)) {
     if (!soft.silhouettes.includes(hit.value)) {
       soft.silhouettes.push(hit.value);
@@ -353,6 +458,12 @@ export function parseQueryDeterministic(
     }
   }
   for (const hit of consumeTable(working, COLOR_TABLE)) {
+    if (!soft.colorFamilies.includes(hit.value.family)) {
+      soft.colorFamilies.push(hit.value.family);
+      signals.push({ kind: 'color', term: hit.term, value: hit.value.family, hard: false });
+    }
+  }
+  for (const hit of consumeTable(working, SEARCH_COLOR_SYNONYMS)) {
     if (!soft.colorFamilies.includes(hit.value.family)) {
       soft.colorFamilies.push(hit.value.family);
       signals.push({ kind: 'color', term: hit.term, value: hit.value.family, hard: false });
