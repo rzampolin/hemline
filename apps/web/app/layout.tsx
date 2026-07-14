@@ -17,12 +17,24 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  // canonical origin for OG/social absolute URLs — env-driven, never a
-  // hardcoded hostname (custom-domain prep, docs/DOMAIN.md)
+  // canonical origin for OG/social absolute URLs — env-driven via the
+  // app-url helper, never a hardcoded hostname (custom-domain prep,
+  // docs/DOMAIN.md)
   metadataBase: new URL(APP_URL),
-  title: 'Hemline — dresses that actually fit',
+  title: {
+    default: 'Hemline — dresses that actually fit',
+    template: '%s · Hemline',
+  },
   description:
     'Dresses that actually fit — your size, your height, your colors. Resale + brand sites, with honest hem predictions for your body.',
+  openGraph: {
+    siteName: 'Hemline',
+    type: 'website',
+    images: [{ url: '/og.png', width: 1200, height: 630, alt: 'Hemline — that maxi? It’s a midi on you.' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+  },
 };
 
 export const viewport: Viewport = {

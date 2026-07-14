@@ -14,6 +14,9 @@ test('landing → quiz → swipe → feed → detail → save', async ({ page })
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Dresses that actually fit');
   await expect(page.getByText('It’s a midi on you', { exact: false })).toBeVisible();
+  // marketing polish 2026-07-13: stats band + privacy one-liner sell the differentiators
+  await expect(page.getByTestId('stats-band')).toContainText('12,800+');
+  await expect(page.getByTestId('privacy-line')).toContainText('No account');
   await shot(page, '01-landing');
 
   /* ── quiz (8 screens, 5'4" size 6/8) ── */
@@ -118,4 +121,22 @@ test('landing → quiz → swipe → feed → detail → save', async ({ page })
   await page.goto('/saved');
   await expect(page.getByTestId('product-card').first()).toBeVisible({ timeout: 15_000 });
   await shot(page, '08-saved');
+});
+
+test('/about renders the full story; landing + about desktop/mobile shots', async ({ page }) => {
+  /* ── about (mobile-first viewport from the project config) ── */
+  const res = await page.goto('/about');
+  expect(res?.status()).toBe(200);
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('How Hemline works');
+  await expect(page.getByRole('heading', { name: 'The hem math, in plain language' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Privacy, plainly' })).toBeVisible();
+  await shot(page, 'about-mobile');
+
+  /* ── desktop shots ── */
+  await page.setViewportSize({ width: 1280, height: 860 });
+  await page.goto('/about');
+  await shot(page, 'about-desktop');
+  await page.goto('/');
+  await expect(page.getByTestId('stats-band')).toBeVisible();
+  await shot(page, 'landing-desktop');
 });
