@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { appErrors, createDb, ensureSchema, ingestRuns, sources, type Db } from '@hemline/db';
 import { __resetDbCache } from '../lib/db';
@@ -24,6 +25,7 @@ const HEALTH_ENV = [
   'ADMIN_BASIC_AUTH',
   'HEALTH_ERROR_SPIKE_THRESHOLD',
   'HEALTH_INGEST_STALE_HOURS',
+  'HEALTH_SCHEDULER_STALE_MINUTES',
   'BUCKET_NAME',
   'AWS_ACCESS_KEY_ID',
   'AWS_SECRET_ACCESS_KEY',
@@ -31,6 +33,7 @@ const HEALTH_ENV = [
   'LITESTREAM_REPLICATE',
   'SUPERVISOR_STATUS_FILE',
   'LITESTREAM_HEARTBEAT_FILE',
+  'SCHEDULER_HEARTBEAT_FILE',
   'HEMLINE_ML_EAGER',
 ] as const;
 const savedEnv: Record<string, string | undefined> = {};
@@ -43,6 +46,9 @@ beforeAll(() => {
   prevDbPath = process.env.DATABASE_PATH;
   process.env.DATABASE_PATH = dbPath;
   __resetDbCache();
+  // hermetic: never read a real machine's /tmp supervisor/heartbeat files
+  process.env.SUPERVISOR_STATUS_FILE = path.join(tmpDir, 'no-supervisor.json');
+  process.env.SCHEDULER_HEARTBEAT_FILE = path.join(tmpDir, 'no-heartbeat.json');
   for (const k of HEALTH_ENV) savedEnv[k] = process.env[k];
 });
 
@@ -145,7 +151,7 @@ describe('GET /api/health — errors + alerts (additive)', () => {
     expect(spike.message).toContain('threshold 1');
   });
 
-  it('flags stale ingest (> 36h since the last run started)', async () => {
+  it('flags stale ingest per source (> 30h since that source last succeeded)', async () => {
     db.insert(sources)
       .values({ id: 'fixture:ops', kind: 'fixture', displayName: 'Ops', cadenceCron: '0 6 * * *' })
       .run();
@@ -161,14 +167,108 @@ describe('GET /api/health — errors + alerts (additive)', () => {
     expect(data.lastIngest.sourceId).toBe('fixture:ops');
     const stale = data.alerts.find((a: any) => a.code === 'ingest_stale');
     expect(stale).toBeDefined();
+    expect(stale.message).toContain("'fixture:ops'");
     expect(stale.message).toMatch(/40h ago/);
 
-    // a fresh run clears it
+    // a fresh run for the SAME source clears it
     db.insert(ingestRuns)
       .values({ sourceId: 'fixture:ops', startedAt: Date.now(), status: 'ok' })
       .run();
     const fresh = await healthData();
     expect(fresh.alerts.find((a: any) => a.code === 'ingest_stale')).toBeUndefined();
+  });
+
+  it('a fresh run from ANOTHER source cannot mask a stale daily store (the 2026-07-10 outage shape)', async () => {
+    // mock eBay keeps succeeding every 6h…
+    db.insert(sources)
+      .values({ id: 'ebay:ops', kind: 'ebay', displayName: 'eBay', cadenceCron: '0 */6 * * *' })
+      .run();
+    db.insert(ingestRuns)
+      .values({ sourceId: 'ebay:ops', startedAt: Date.now() - 3_600_000, status: 'ok' })
+      .run();
+    // …while a daily store silently died 3 days ago
+    db.insert(sources)
+      .values({
+        id: 'shopify:dead.store',
+        kind: 'shopify',
+        displayName: 'Dead Store',
+        cadenceCron: '0 6 * * *',
+      })
+      .run();
+    db.insert(ingestRuns)
+      .values({ sourceId: 'shopify:dead.store', startedAt: Date.now() - 72 * 3_600_000, status: 'ok' })
+      .run();
+
+    const data = await healthData();
+    const stale = data.alerts.find((a: any) => a.code === 'ingest_stale');
+    expect(stale).toBeDefined();
+    expect(stale.message).toContain("'shopify:dead.store'");
+    expect(stale.message).toMatch(/72h ago/);
+
+    // error runs don't count as success — the alert stays until an OK run
+    db.insert(ingestRuns)
+      .values({
+        sourceId: 'shopify:dead.store',
+        startedAt: Date.now(),
+        status: 'error',
+        error: 'watchdog timeout',
+      })
+      .run();
+    const still = await healthData();
+    expect(still.alerts.find((a: any) => a.code === 'ingest_stale')).toBeDefined();
+
+    // disabling the source retires it from the alert (admin toggle is the
+    // honest way to drop a dead/banned source, e.g. the keyless mock eBay cron)
+    db.update(sources).set({ enabled: false }).where(eq(sources.id, 'shopify:dead.store')).run();
+    const cleared = await healthData();
+    expect(cleared.alerts.find((a: any) => a.code === 'ingest_stale')).toBeUndefined();
+  });
+
+  it('never-succeeded sources do not alert (no cadence promise to break yet)', async () => {
+    db.insert(sources)
+      .values({ id: 'shopify:brand.new', kind: 'shopify', displayName: 'New', cadenceCron: '0 6 * * *' })
+      .run();
+    const data = await healthData();
+    expect(data.alerts.find((a: any) => a.code === 'ingest_stale')).toBeUndefined();
+  });
+
+  it('flags scheduler_dead from a stale heartbeat file, clears on a fresh one', async () => {
+    const hbPath = path.join(tmpDir, 'scheduler-heartbeat.json');
+    process.env.SCHEDULER_HEARTBEAT_FILE = hbPath;
+
+    // no file → no alert (web-only dev run)
+    let data = await healthData();
+    expect(data.alerts.find((a: any) => a.code === 'scheduler_dead')).toBeUndefined();
+
+    // stale heartbeat (45min old, threshold 30) → alert
+    fs.writeFileSync(hbPath, JSON.stringify({ updatedAt: Date.now() - 45 * 60_000 }));
+    data = await healthData();
+    const dead = data.alerts.find((a: any) => a.code === 'scheduler_dead');
+    expect(dead).toBeDefined();
+    expect(dead.message).toMatch(/45min old/);
+
+    // fresh heartbeat → clears
+    fs.writeFileSync(hbPath, JSON.stringify({ updatedAt: Date.now() }));
+    data = await healthData();
+    expect(data.alerts.find((a: any) => a.code === 'scheduler_dead')).toBeUndefined();
+    fs.rmSync(hbPath);
+  });
+
+  it('flags scheduler_dead when the supervisor reports the child down', async () => {
+    const statusPath = path.join(tmpDir, 'supervisor-sched.json');
+    process.env.SUPERVISOR_STATUS_FILE = statusPath;
+    fs.writeFileSync(
+      statusPath,
+      JSON.stringify({
+        updatedAt: Date.now(),
+        children: { scheduler: { up: false, lastExit: { code: 1, signal: null, at: Date.now() } } },
+      }),
+    );
+    const data = await healthData();
+    const dead = data.alerts.find((a: any) => a.code === 'scheduler_dead');
+    expect(dead).toBeDefined();
+    expect(dead.message).toContain('scheduler child is down');
+    fs.rmSync(statusPath);
   });
 
   it('flags litestream down from the supervisor status file when backups are expected', async () => {

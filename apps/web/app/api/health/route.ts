@@ -20,16 +20,20 @@
  *  - alerts: self-diagnosis array (additive, ops 2026-07-13; docs/UPTIME.md).
  *    Empty = nothing to flag; a keyword monitor can alert whenever the body
  *    stops containing `"alerts":[]`. Codes: ml_failed / ml_unavailable /
- *    ingest_stale / error_spike / litestream_down. "db unreachable" has no
- *    alert entry — it is the 503 path below (status != 200 IS the alert).
+ *    ingest_stale / error_spike / litestream_down / scheduler_dead.
+ *    ingest_stale is PER-SOURCE (stalest enabled source's last successful run,
+ *    docs/decisions-scheduler.md #4) — the old any-source check let the mock
+ *    eBay cron mask the 2026-07-10 daily-crawl outage. scheduler_dead reads
+ *    the scheduler heartbeat file + supervisor status (#5). "db unreachable"
+ *    has no alert entry — it is the 503 path below (status != 200 IS the alert).
  *    Litestream detection reads the supervisor status file written by
  *    docker/start.mjs (fallback: the /tmp/litestream-alive heartbeat); limits
  *    are documented honestly in docs/decisions-ops.md.
  */
 import fs from 'node:fs';
-import { desc, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { EMBEDDING_MODEL_TAG } from '@hemline/contracts';
-import { appErrorStats, embeddingStats, ingestRuns, listings } from '@hemline/db';
+import { appErrorStats, embeddingStats, ingestRuns, listings, sources, type Db } from '@hemline/db';
 import { sidecarStatus } from '@hemline/matching/embedder';
 import { getDb } from '../lib/db';
 import { fail, ok } from '../lib/envelope';
@@ -38,7 +42,13 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 interface HealthAlert {
-  code: 'ml_failed' | 'ml_unavailable' | 'ingest_stale' | 'error_spike' | 'litestream_down';
+  code:
+    | 'ml_failed'
+    | 'ml_unavailable'
+    | 'ingest_stale'
+    | 'error_spike'
+    | 'litestream_down'
+    | 'scheduler_dead';
   message: string;
 }
 
@@ -51,6 +61,93 @@ interface SupervisorStatusFile {
 }
 
 const S3_VARS = ['BUCKET_NAME', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_ENDPOINT_URL_S3'];
+
+/**
+ * Per-source ingest staleness (docs/decisions-scheduler.md #4). The old check
+ * ("ANY recent ingest_runs row") let the 6-hourly mock eBay cron mask a 3-day
+ * outage of every daily store crawl (2026-07-10 incident). Now: every ENABLED
+ * source that has ever completed a SUCCESSFUL run must have done so within
+ * HEALTH_INGEST_STALE_HOURS (default 30 — daily cadence + slack); the alert
+ * names the stalest source and its age. Disabled sources are ignored (the
+ * admin toggle is the honest way to retire one — e.g. the banned mock eBay
+ * cron), and never-succeeded sources are skipped (a brand-new source/install
+ * has no cadence promise to break yet; the `lastIngest: null` payload field
+ * keeps that case visible).
+ */
+function perSourceStaleAlert(db: Db, now: number): HealthAlert | null {
+  const staleHours = Number(process.env.HEALTH_INGEST_STALE_HOURS ?? 30);
+  const rows = db
+    .select({
+      sourceId: ingestRuns.sourceId,
+      lastOkAt: sql<number>`max(${ingestRuns.startedAt})`,
+    })
+    .from(ingestRuns)
+    .innerJoin(sources, eq(sources.id, ingestRuns.sourceId))
+    .where(and(eq(sources.enabled, true), eq(ingestRuns.status, 'ok')))
+    .groupBy(ingestRuns.sourceId)
+    .all();
+  if (rows.length === 0) return null;
+
+  let stalest = rows[0];
+  for (const row of rows) if (row.lastOkAt < stalest.lastOkAt) stalest = row;
+  const ageMs = now - stalest.lastOkAt;
+  if (ageMs <= staleHours * 3_600_000) return null;
+  return {
+    code: 'ingest_stale',
+    message:
+      `stalest enabled source '${stalest.sourceId}' last succeeded ${Math.round(ageMs / 3_600_000)}h ago ` +
+      `(threshold ${staleHours}h; every enabled source must succeed on cadence — ` +
+      `disable retired sources in the sources table)`,
+  };
+}
+
+/**
+ * Scheduler liveness (docs/decisions-scheduler.md #5). Two independent
+ * signals, either fires `scheduler_dead`:
+ *  - the supervisor status file says the scheduler child is down;
+ *  - the scheduler's heartbeat file (written every ~60s by the tick loop)
+ *    exists but is older than HEALTH_SCHEDULER_STALE_MINUTES (default 30) —
+ *    the process is up per the supervisor yet its event loop / cron layer has
+ *    silently stopped, exactly the 2026-07-10 failure shape.
+ * No heartbeat file at all → no alert (web-only dev runs have no scheduler;
+ * in the container the scheduler writes its first beat at boot).
+ */
+function schedulerAlert(now: number): HealthAlert | null {
+  const status = readSupervisorStatus();
+  const child = status?.children?.scheduler;
+  if (child && child.up === false) {
+    const exit = child.lastExit;
+    return {
+      code: 'scheduler_dead',
+      message: `scheduler child is down (exit code=${exit?.code ?? '?'} signal=${exit?.signal ?? 'none'}; supervisor restarts with backoff)`,
+    };
+  }
+  const hbPath = process.env.SCHEDULER_HEARTBEAT_FILE ?? '/tmp/hemline-scheduler-heartbeat.json';
+  try {
+    const hb = JSON.parse(fs.readFileSync(hbPath, 'utf8')) as { updatedAt?: number };
+    const staleMinutes = Number(process.env.HEALTH_SCHEDULER_STALE_MINUTES ?? 30);
+    if (typeof hb.updatedAt === 'number' && now - hb.updatedAt > staleMinutes * 60_000) {
+      return {
+        code: 'scheduler_dead',
+        message:
+          `scheduler heartbeat is ${Math.round((now - hb.updatedAt) / 60_000)}min old ` +
+          `(threshold ${staleMinutes}min) — the cron loop has silently stopped`,
+      };
+    }
+  } catch {
+    /* no/unreadable heartbeat — scheduler not expected in this process (dev) */
+  }
+  return null;
+}
+
+function readSupervisorStatus(): SupervisorStatusFile | null {
+  const statusPath = process.env.SUPERVISOR_STATUS_FILE ?? '/tmp/hemline-supervisor.json';
+  try {
+    return JSON.parse(fs.readFileSync(statusPath, 'utf8')) as SupervisorStatusFile;
+  } catch {
+    return null;
+  }
+}
 
 function litestreamAlert(): HealthAlert | null {
   const expected =
@@ -120,13 +217,11 @@ export async function GET() {
       alerts.push({ code: 'ml_unavailable', message: 'HEMLINE_ML_EAGER=1 but the ML sidecar is not installed in this container' });
     }
 
-    const staleHours = Number(process.env.HEALTH_INGEST_STALE_HOURS ?? 36);
-    if (lastRun && now - lastRun.startedAt > staleHours * 3_600_000) {
-      alerts.push({
-        code: 'ingest_stale',
-        message: `last ingest run started ${Math.round((now - lastRun.startedAt) / 3_600_000)}h ago (threshold ${staleHours}h)`,
-      });
-    }
+    const stale = perSourceStaleAlert(db, now);
+    if (stale) alerts.push(stale);
+
+    const sched = schedulerAlert(now);
+    if (sched) alerts.push(sched);
 
     const spikeThreshold = Number(process.env.HEALTH_ERROR_SPIKE_THRESHOLD ?? 20);
     if (errors.lastHour >= spikeThreshold) {
