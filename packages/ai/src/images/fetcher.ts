@@ -17,13 +17,18 @@
  *   - best-effort per-host min delay (no per-host serialization — the vision
  *     runners' concurrency is low and each request is followed by an API call,
  *     so a cheap delay is plenty polite)
- *   - hard size cap (default 5MB — the API's own per-image limit); enforced
- *     while streaming, so an oversized file is aborted, not fully downloaded
+ *   - size handling (2026-07 oversized-image rescue): images over the API's
+ *     5MB per-image limit are DOWNSCALED with sharp (longest edge ~1200px,
+ *     JPEG q80 — far under 5MB and plenty of pixels for vision) instead of
+ *     rejected; only a HARD cap (default 20MB, enforced while streaming so an
+ *     absurd file is aborted mid-download) still fails with 'too_large'
  *   - media type sniffed from magic bytes first, Content-Type header second
+ *     (sniffed BEFORE any downscale — sharp only ever sees real images)
  *   - in-memory LRU (byte-capped) + in-flight dedupe keyed by URL, so the
  *     extraction and lengths passes never download the same image twice in a
  *     run
  */
+import sharp from 'sharp';
 import type Anthropic from '@anthropic-ai/sdk';
 
 export const SUPPORTED_IMAGE_MEDIA_TYPES = [
@@ -34,8 +39,13 @@ export const SUPPORTED_IMAGE_MEDIA_TYPES = [
 ] as const;
 export type ImageMediaType = (typeof SUPPORTED_IMAGE_MEDIA_TYPES)[number];
 
-/** The API rejects images over 5MB — reject before uploading, with a clear marker. */
+/** The API rejects images over 5MB — anything above this gets downscaled. */
 export const DEFAULT_MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+/** Absolute download abort ceiling: nothing bigger is even fully downloaded. */
+export const DEFAULT_HARD_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+/** Downscale target: longest edge in px — plenty of resolution for vision. */
+export const DEFAULT_DOWNSCALE_EDGE_PX = 1200;
+export const DEFAULT_DOWNSCALE_JPEG_QUALITY = 80;
 export const DEFAULT_IMAGE_FETCH_TIMEOUT_MS = 20_000;
 export const DEFAULT_IMAGE_FETCH_ATTEMPTS = 2;
 export const DEFAULT_IMAGE_CACHE_BYTES = 64 * 1024 * 1024;
@@ -54,11 +64,13 @@ export interface FetchedImage {
   base64: string;
   mediaType: ImageMediaType;
   bytes: number;
+  /** true when the original exceeded the API cap and was downscaled to JPEG */
+  downscaled?: boolean;
 }
 
 export type ImageFetchFailureReason =
   | 'http_error' // non-2xx after the retry budget
-  | 'too_large' // over the size cap (clear marker per decisions #25)
+  | 'too_large' // over the HARD cap, or the downscale rescue failed (decisions #25)
   | 'unsupported_media_type' // neither magic bytes nor Content-Type identify a supported type
   | 'network_error'; // fetch threw / timed out after the retry budget
 
@@ -72,6 +84,8 @@ export interface ImageFetcherStats {
   /** served from the LRU without touching the network */
   cacheHits: number;
   failures: number;
+  /** oversized originals rescued by the sharp downscale path (optional: additive) */
+  downscales?: number;
 }
 
 export interface ImageFetcher {
@@ -81,8 +95,14 @@ export interface ImageFetcher {
 
 export interface ImageFetcherOptions {
   fetchImpl?: typeof fetch;
-  /** hard size cap in bytes (default 5MB — the API's per-image limit) */
+  /** API per-image limit (default 5MB) — larger downloads are DOWNSCALED, not rejected */
   maxBytes?: number;
+  /** absolute abort ceiling (default 20MB) — larger downloads fail 'too_large' */
+  hardMaxBytes?: number;
+  /** downscale target for the longest edge (default 1200px) */
+  downscaleEdgePx?: number;
+  /** JPEG quality for downscaled images (default 80) */
+  downscaleJpegQuality?: number;
   /** per-attempt timeout (default 20s) */
   timeoutMs?: number;
   /** total attempts on retryable failures (network / 429 / 5xx). Default 2. */
@@ -153,6 +173,9 @@ const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 export function createImageFetcher(options: ImageFetcherOptions = {}): ImageFetcher {
   const fetchImpl = options.fetchImpl ?? fetch;
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_IMAGE_BYTES;
+  const hardMaxBytes = Math.max(maxBytes, options.hardMaxBytes ?? DEFAULT_HARD_MAX_IMAGE_BYTES);
+  const downscaleEdgePx = options.downscaleEdgePx ?? DEFAULT_DOWNSCALE_EDGE_PX;
+  const downscaleJpegQuality = options.downscaleJpegQuality ?? DEFAULT_DOWNSCALE_JPEG_QUALITY;
   const timeoutMs = options.timeoutMs ?? DEFAULT_IMAGE_FETCH_TIMEOUT_MS;
   const attempts = Math.max(1, options.attempts ?? DEFAULT_IMAGE_FETCH_ATTEMPTS);
   const minDelayMs = options.minDelayMs ?? defaultImageFetchDelayMs();
@@ -160,7 +183,7 @@ export function createImageFetcher(options: ImageFetcherOptions = {}): ImageFetc
   const userAgent = options.userAgent ?? hemlineImageUserAgent();
   const sleep = options.sleep ?? defaultSleep;
 
-  const stats: ImageFetcherStats = { fetches: 0, cacheHits: 0, failures: 0 };
+  const stats: ImageFetcherStats = { fetches: 0, cacheHits: 0, failures: 0, downscales: 0 };
 
   // LRU by insertion order (Map preserves it; refresh on hit), byte-capped.
   const cache = new Map<string, FetchedImage>();
@@ -192,13 +215,16 @@ export function createImageFetcher(options: ImageFetcherOptions = {}): ImageFetc
     if (wait > 0) await sleep(wait);
   }
 
-  /** Read the body with the size cap enforced mid-stream. */
+  /**
+   * Read the body with the HARD cap enforced mid-stream (an oversized-but-
+   * sane body between maxBytes and the hard cap is kept — it gets downscaled).
+   */
   async function readCapped(res: Response): Promise<Uint8Array | 'too_large'> {
     const declared = Number(res.headers.get('content-length'));
-    if (Number.isFinite(declared) && declared > maxBytes) return 'too_large';
+    if (Number.isFinite(declared) && declared > hardMaxBytes) return 'too_large';
     if (!res.body) {
       const buf = new Uint8Array(await res.arrayBuffer());
-      return buf.byteLength > maxBytes ? 'too_large' : buf;
+      return buf.byteLength > hardMaxBytes ? 'too_large' : buf;
     }
     const reader = res.body.getReader();
     const chunks: Uint8Array[] = [];
@@ -207,7 +233,7 @@ export function createImageFetcher(options: ImageFetcherOptions = {}): ImageFetc
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
-      if (total > maxBytes) {
+      if (total > hardMaxBytes) {
         await reader.cancel().catch(() => undefined);
         return 'too_large';
       }
@@ -255,7 +281,7 @@ export function createImageFetcher(options: ImageFetcherOptions = {}): ImageFetc
         return {
           ok: false,
           reason: 'too_large',
-          detail: `image exceeds the ${Math.round(maxBytes / 1024 / 1024)}MB cap`,
+          detail: `image exceeds the ${Math.round(hardMaxBytes / 1024 / 1024)}MB hard cap`,
         };
       }
       const mediaType = sniffImageMediaType(body, res.headers.get('content-type'));
@@ -266,11 +292,53 @@ export function createImageFetcher(options: ImageFetcherOptions = {}): ImageFetc
           detail: `not a supported image (content-type: ${res.headers.get('content-type') ?? 'none'})`,
         };
       }
-      const image: FetchedImage = {
-        base64: Buffer.from(body).toString('base64'),
-        mediaType,
-        bytes: body.byteLength,
-      };
+      let image: FetchedImage;
+      if (body.byteLength > maxBytes) {
+        // Oversized-image rescue: downscale instead of rejecting (the old
+        // 'too_large' path starved ~64 dresses of hem estimates). ~1200px
+        // JPEG q80 lands far under the 5MB API cap with ample vision detail.
+        let out: Buffer;
+        try {
+          out = await sharp(Buffer.from(body))
+            .rotate() // honor EXIF orientation before it is stripped
+            .resize({
+              width: downscaleEdgePx,
+              height: downscaleEdgePx,
+              fit: 'inside',
+              withoutEnlargement: true,
+            })
+            .jpeg({ quality: downscaleJpegQuality })
+            .toBuffer();
+        } catch (err) {
+          return {
+            ok: false,
+            reason: 'too_large',
+            detail:
+              `image exceeds the ${Math.round(maxBytes / 1024 / 1024)}MB cap and could not be ` +
+              `downscaled: ${(err as Error).message || String(err)}`,
+          };
+        }
+        if (out.byteLength > maxBytes) {
+          return {
+            ok: false,
+            reason: 'too_large',
+            detail: `image still exceeds the ${Math.round(maxBytes / 1024 / 1024)}MB cap after downscaling`,
+          };
+        }
+        stats.downscales = (stats.downscales ?? 0) + 1;
+        image = {
+          base64: out.toString('base64'),
+          mediaType: 'image/jpeg',
+          bytes: out.byteLength,
+          downscaled: true,
+        };
+      } else {
+        image = {
+          base64: Buffer.from(body).toString('base64'),
+          mediaType,
+          bytes: body.byteLength,
+        };
+      }
       cachePut(url, image);
       return { ok: true, image };
     }

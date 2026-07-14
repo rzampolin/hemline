@@ -17,6 +17,10 @@
  *   npm run extract:lengths -- --reanchor
  *     # re-run default-anchored estimates whose listing states a model height
  *     # ≥1" off the 69" assumption, with the correct anchor
+ *   npm run extract:lengths -- --requeue-not-estimable [--dry-run]
+ *     # reset 'not_estimable' rows back into the fresh-pass queue — the
+ *     # oversized-image (>5MB → too_large) cohort is rescuable now that the
+ *     # fetcher downscales instead of rejecting; --dry-run only counts/quotes
  *
  * Idempotent/resumable: attempted rows are marked ('image_estimate' with
  * inches, or 'not_estimable' without) and skipped on re-run; reanchored rows
@@ -29,8 +33,10 @@ import type { Logger } from '@hemline/contracts';
 import {
   buildLengthEstimateTargets,
   buildReanchorTargets,
+  countNotEstimableRequeue,
   lengthCoverage,
   migrateLengthBookkeeping,
+  requeueNotEstimable,
   runLengthEstimation,
   REANCHOR_MIN_DELTA_IN,
   type LengthEstimateTarget,
@@ -56,7 +62,14 @@ function usd(n: number): string {
 
 async function main(): Promise<void> {
   const reanchor = process.argv.includes('--reanchor');
-  const label = reanchor ? 'lengths --reanchor' : 'lengths';
+  const requeue = process.argv.includes('--requeue-not-estimable');
+  const dryRun = process.argv.includes('--dry-run');
+  const label = reanchor ? 'lengths --reanchor' : requeue ? 'lengths --requeue' : 'lengths';
+  if (reanchor && requeue) {
+    console.error('[lengths] --reanchor and --requeue-not-estimable are separate passes — pick one.');
+    process.exitCode = 1;
+    return;
+  }
   const db = openDb();
 
   // ── free, deterministic phase: bookkeeping + parser coverage ────────────
@@ -66,6 +79,27 @@ async function main(): Promise<void> {
       `[${label}] bookkeeping: ${migrated} clamped/not-estimable row(s) re-marked ` +
         `length_basis='not_estimable' (was 'image_estimate' with NULL inches; no API calls)`,
     );
+  }
+
+  // ── --requeue-not-estimable: reset the given-up rows into the fresh queue ─
+  if (requeue) {
+    const eligible = countNotEstimableRequeue(db);
+    console.log(
+      `[${label}] ${eligible} row(s) marked 'not_estimable' (protected manual/fixture rows excluded). ` +
+        `The db never stored WHY each gave up, so the reset covers all of them: the oversized-image ` +
+        `(too_large) cohort succeeds under the downscale rescue; the rest re-settle as 'not_estimable'.`,
+    );
+    if (dryRun) {
+      console.log(
+        `[${label}] --dry-run: nothing reset, no API cost. A full re-run would cost ` +
+          `${eligible} × ~${usd(EST_COST_PER_CALL_USD)} ≈ ${usd(eligible * EST_COST_PER_CALL_USD)}. ` +
+          `Re-run without --dry-run to requeue + estimate.`,
+      );
+      printCoverage();
+      return;
+    }
+    const reset = requeueNotEstimable(db);
+    console.log(`[${label}] requeued ${reset} row(s) — continuing into the fresh pass below.`);
   }
 
   let targets: LengthEstimateTarget[];

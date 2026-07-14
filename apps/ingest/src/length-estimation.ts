@@ -146,6 +146,44 @@ export function buildReanchorTargets(db: Db, limit = 100_000): ReanchorScan {
 }
 
 /**
+ * `--requeue-not-estimable` selection: rows the vision pass gave up on
+ * (basis='not_estimable', inches NULL). The error detail (too_large vs a
+ * genuinely unestimable photo) was never persisted, so the reset targets ALL
+ * of them — after the oversized-image downscale rescue in @hemline/ai the
+ * too_large cohort now succeeds, and the genuinely unestimable rest lands
+ * right back at 'not_estimable' for ~$0.0026/row. Protected models
+ * (manual/fixture) are never touched.
+ */
+export function countNotEstimableRequeue(db: Db): number {
+  const row = db.get<{ n: number }>(sql`
+    SELECT COUNT(*) AS n FROM extractions
+    WHERE length_basis = 'not_estimable' AND length_inches IS NULL
+      AND model NOT IN ('manual', 'fixture')
+  `);
+  return row?.n ?? 0;
+}
+
+/**
+ * Reset 'not_estimable' markers so the normal fresh-pass queue re-selects
+ * those rows (basis/anchor cleared; idempotent — a second call is a no-op).
+ * Returns the number of rows requeued.
+ */
+export function requeueNotEstimable(db: Db): number {
+  const result = db
+    .update(extractions)
+    .set({ lengthBasis: null, lengthAnchor: null, lengthAnchorHeightIn: null })
+    .where(
+      and(
+        eq(extractions.lengthBasis, 'not_estimable'),
+        isNull(extractions.lengthInches),
+        notInArray(extractions.model, ['manual', 'fixture']),
+      ),
+    )
+    .run();
+  return Number(result.changes ?? 0);
+}
+
+/**
  * Bookkeeping fix (v2, no API calls): v1 marked clamped/not-estimable
  * attempts with length_basis='image_estimate' and NULL inches; re-mark them
  * 'not_estimable' so basis='image_estimate' always implies inches present.

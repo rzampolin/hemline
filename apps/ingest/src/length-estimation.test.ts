@@ -10,8 +10,10 @@ import { extractions, listingImages, listings, sources, type Db } from '@hemline
 import {
   buildLengthEstimateTargets,
   buildReanchorTargets,
+  countNotEstimableRequeue,
   lengthCoverage,
   migrateLengthBookkeeping,
+  requeueNotEstimable,
   runLengthEstimation,
 } from './length-estimation';
 import { createTestDb } from './testing/test-db';
@@ -310,6 +312,64 @@ describe('migrateLengthBookkeeping — v1 → v2 marker fix (no API calls)', () 
     expect(migrateLengthBookkeeping(db)).toBe(0);
     // and the fresh queue is unaffected
     expect(buildLengthEstimateTargets(db).map((t) => t.listingId)).toEqual(['src:untried']);
+  });
+});
+
+describe('requeueNotEstimable — oversized-image rescue re-queue (--requeue-not-estimable)', () => {
+  it('counts + resets only unprotected not_estimable rows; the fresh queue re-selects them', () => {
+    seed([
+      // the too_large victim (and any genuinely unestimable sibling — the db
+      // never stored WHY a row gave up, so both are requeued)
+      { id: 'gave-up', lengthBasis: 'not_estimable', lengthAnchor: 'assumed_default', lengthAnchorHeightIn: 69 },
+      // protected ground truth — never touched
+      { id: 'fixture-gave-up', lengthBasis: 'not_estimable', model: 'fixture' },
+      // successful estimates and untried rows — never touched
+      { id: 'estimated', lengthInches: 44, lengthBasis: 'image_estimate' },
+      { id: 'untried' },
+    ]);
+    expect(countNotEstimableRequeue(db)).toBe(1); // dry-run number
+    expect(requeueNotEstimable(db)).toBe(1);
+
+    const row = db.select().from(extractions).where(eq(extractions.contentHash, 'hash-gave-up')).get()!;
+    expect(row.lengthBasis).toBeNull();
+    expect(row.lengthAnchor).toBeNull();
+    expect(row.lengthAnchorHeightIn).toBeNull();
+    const fixture = db
+      .select()
+      .from(extractions)
+      .where(eq(extractions.contentHash, 'hash-fixture-gave-up'))
+      .get()!;
+    expect(fixture.lengthBasis).toBe('not_estimable');
+
+    // the reset row is back in the fresh-pass queue alongside the untried one
+    expect(buildLengthEstimateTargets(db).map((t) => t.listingId).sort()).toEqual([
+      'src:gave-up',
+      'src:untried',
+    ]);
+    // idempotent: nothing left to reset
+    expect(requeueNotEstimable(db)).toBe(0);
+    expect(countNotEstimableRequeue(db)).toBe(0);
+  });
+
+  it('a requeued row that succeeds under the downscale rescue gets inches; a repeat failure re-settles terminally', async () => {
+    seed([
+      { id: 'rescued', lengthBasis: 'not_estimable' },
+      { id: 'hopeless', lengthBasis: 'not_estimable' },
+    ]);
+    requeueNotEstimable(db);
+    const targets = buildLengthEstimateTargets(db);
+    const estimator = fakeEstimator((hash) =>
+      hash === 'hash-rescued'
+        ? estimated(44)
+        : { status: 'no_estimate', lengthInches: null, rawLengthInches: null, modelConfidence: 0.2, reasoning: null },
+    );
+    await runLengthEstimation(db, targets, estimator, silent);
+    const rescued = db.select().from(extractions).where(eq(extractions.contentHash, 'hash-rescued')).get()!;
+    expect(rescued).toMatchObject({ lengthInches: 44, lengthBasis: 'image_estimate' });
+    const hopeless = db.select().from(extractions).where(eq(extractions.contentHash, 'hash-hopeless')).get()!;
+    expect(hopeless).toMatchObject({ lengthInches: null, lengthBasis: 'not_estimable' });
+    // the queue drained — no perpetual re-billing
+    expect(buildLengthEstimateTargets(db)).toEqual([]);
   });
 });
 

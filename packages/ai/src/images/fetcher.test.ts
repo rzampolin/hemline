@@ -1,12 +1,14 @@
 /**
  * Polite image fetcher tests — base64 image delivery (decisions #25):
- * media sniffing, size cap, retry semantics, LRU + in-flight dedupe, and the
- * identified HemlineBot User-Agent.
+ * media sniffing, oversized-image downscale rescue, hard-cap abort, retry
+ * semantics, LRU + in-flight dedupe, and the identified HemlineBot User-Agent.
  */
+import sharp from 'sharp';
 import { describe, expect, it, vi } from 'vitest';
 import {
   base64ImageBlock,
   createImageFetcher,
+  DEFAULT_HARD_MAX_IMAGE_BYTES,
   DEFAULT_MAX_IMAGE_BYTES,
   hemlineImageUserAgent,
   sniffImageMediaType,
@@ -91,24 +93,107 @@ describe('createImageFetcher', () => {
     expect(hemlineImageUserAgent()).toContain('HemlineBot');
   });
 
-  it('rejects oversized images with a clear too_large marker (declared Content-Length)', async () => {
+  it('rejects images over the HARD cap with a clear too_large marker (declared Content-Length)', async () => {
     const headers = new Headers({
       'content-type': 'image/jpeg',
-      'content-length': String(DEFAULT_MAX_IMAGE_BYTES + 1),
+      'content-length': String(DEFAULT_HARD_MAX_IMAGE_BYTES + 1),
     });
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JPEG.slice(), { status: 200, headers }));
     const result = await fetcher(fetchImpl).fetchImage('https://cdn.example.com/huge.jpg');
     expect(result).toMatchObject({ ok: false, reason: 'too_large' });
+    if (result.ok) throw new Error('unreachable');
+    expect(result.detail).toContain('hard cap');
   });
 
-  it('enforces the cap mid-stream when no Content-Length is declared', async () => {
-    const big = new Uint8Array(64);
+  it('enforces the HARD cap mid-stream when no Content-Length is declared', async () => {
+    const big = new Uint8Array(128);
     big.set(JPEG);
     const fetchImpl = vi.fn().mockResolvedValue(imageResponse(big));
-    const f = fetcher(fetchImpl, { maxBytes: 32 });
+    const f = fetcher(fetchImpl, { maxBytes: 32, hardMaxBytes: 64 });
     const result = await f.fetchImage('https://cdn.example.com/big.jpg');
     expect(result).toMatchObject({ ok: false, reason: 'too_large' });
     expect(f.stats.failures).toBe(1);
+    expect(f.stats.downscales).toBe(0); // aborted before any rescue attempt
+  });
+
+  describe('oversized-image rescue (downscale instead of reject)', () => {
+    /** A real PNG bigger than the tiny test cap, synthesized with sharp. */
+    async function bigPng(width = 320, height = 400): Promise<Uint8Array> {
+      // deterministic LCG noise defeats PNG compression → comfortably over a 4KB cap
+      const raw = Buffer.alloc(width * height * 3);
+      let state = 42;
+      for (let i = 0; i < raw.length; i++) {
+        state = (state * 1103515245 + 12345) & 0x7fffffff;
+        raw[i] = (state >>> 16) & 0xff;
+      }
+      const png = await sharp(raw, { raw: { width, height, channels: 3 } })
+        .png()
+        .toBuffer();
+      expect(png.byteLength).toBeGreaterThan(4096);
+      return new Uint8Array(png);
+    }
+
+    it('an image over the API cap (but under the hard cap) is downscaled to JPEG, not rejected', async () => {
+      const png = await bigPng();
+      const fetchImpl = vi.fn().mockResolvedValue(imageResponse(png, { contentType: 'image/png' }));
+      const f = fetcher(fetchImpl, { maxBytes: 4096, downscaleEdgePx: 64 });
+      const result = await f.fetchImage('https://cdn.example.com/oversized.png');
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('unreachable');
+      expect(result.image.downscaled).toBe(true);
+      expect(result.image.mediaType).toBe('image/jpeg');
+      expect(result.image.bytes).toBeLessThanOrEqual(4096);
+      // the payload really is a JPEG of the requested edge
+      const meta = await sharp(Buffer.from(result.image.base64, 'base64')).metadata();
+      expect(meta.format).toBe('jpeg');
+      expect(Math.max(meta.width ?? 0, meta.height ?? 0)).toBeLessThanOrEqual(64);
+      expect(f.stats).toMatchObject({ fetches: 1, failures: 0, downscales: 1 });
+    });
+
+    it('a Content-Length over the API cap no longer short-circuits — the body is read and rescued', async () => {
+      const png = await bigPng();
+      const headers = new Headers({
+        'content-type': 'image/png',
+        'content-length': String(png.byteLength),
+      });
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValue(new Response(png.slice(), { status: 200, headers }));
+      const f = fetcher(fetchImpl, { maxBytes: 4096, downscaleEdgePx: 64 });
+      const result = await f.fetchImage('https://cdn.example.com/predicted-oversized.png');
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('unreachable');
+      expect(result.image.downscaled).toBe(true);
+    });
+
+    it('oversized bytes that only pretend to be an image → too_large with a downscale detail', async () => {
+      const junk = new Uint8Array(8192);
+      junk.set(JPEG); // JPEG magic, garbage body — sharp cannot decode it
+      const fetchImpl = vi.fn().mockResolvedValue(imageResponse(junk));
+      const f = fetcher(fetchImpl, { maxBytes: 4096 });
+      const result = await f.fetchImage('https://cdn.example.com/corrupt-huge.jpg');
+      expect(result).toMatchObject({ ok: false, reason: 'too_large' });
+      if (result.ok) throw new Error('unreachable');
+      expect(result.detail).toContain('could not be downscaled');
+    });
+
+    it('small images pass through untouched (no downscale, original bytes + media type)', async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(imageResponse(PNG, { contentType: 'image/png' }));
+      const f = fetcher(fetchImpl);
+      const result = await f.fetchImage('https://cdn.example.com/small.png');
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('unreachable');
+      expect(result.image.downscaled).toBeUndefined();
+      expect(result.image.mediaType).toBe('image/png');
+      expect(Buffer.from(result.image.base64, 'base64')).toEqual(Buffer.from(PNG));
+      expect(f.stats.downscales).toBe(0);
+    });
+
+    it('the default caps: API limit 5MB < hard cap 20MB', () => {
+      expect(DEFAULT_MAX_IMAGE_BYTES).toBe(5 * 1024 * 1024);
+      expect(DEFAULT_HARD_MAX_IMAGE_BYTES).toBe(20 * 1024 * 1024);
+    });
   });
 
   it('non-image payloads → unsupported_media_type', async () => {
