@@ -11,8 +11,10 @@ records what changed, what deliberately did not, and why.
   copy; /about (title, OG title, wordmark, h1, body copy); marketing footer;
   feed header wordmark; check-page error copy ("Soline only does dress
   math"); profile copy; admin title + "Soline Ops" heading; palette
-  share-card canvas text (`result-view.tsx` — both the canvas `fillText`
-  wordmark baked into the downloaded PNG and the on-screen wordmark).
+  share-card canvas text (`result-view.tsx` — the canvas `fillText`
+  wordmark baked into the downloaded PNG, the lowercase caption
+  "my colors, by soline" in both the canvas and the on-screen card, and the
+  download filename `soline-<season>.png`).
 - **OG image**: `apps/web/scripts/generate-og.mjs` wordmark → Soline;
   `public/og.png` regenerated from it.
 - **Crawler identity**: `HemlineBot/1.0` → `SolineBot/1.0` in all three

@@ -75,7 +75,7 @@ export function ResultView({ result, onRetake, retakeLabel }: { result: ColorAna
         });
         ctx.fillStyle = '#a39987';
         ctx.font = '30px Georgia, serif';
-        ctx.fillText('my colors, by hemline — dresses that actually fit', W / 2, H - 90);
+        ctx.fillText('my colors, by soline — dresses that actually fit', W / 2, H - 90);
         setDownloadUrl(canvas.toDataURL('image/png'));
       });
     } finally {
@@ -96,14 +96,14 @@ export function ResultView({ result, onRetake, retakeLabel }: { result: ColorAna
               <Swatch key={c.hex} hex={c.hex} name={c.name} size="lg" className="w-full" />
             ))}
           </div>
-          <p className="mt-4 text-[11px] text-ink-faint">my colors, by hemline</p>
+          <p className="mt-4 text-[11px] text-ink-faint">my colors, by soline</p>
         </div>
         <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
         <div className="mt-6 flex w-full max-w-sm flex-col gap-2">
           {downloadUrl && (
             <a
               href={downloadUrl}
-              download={`hemline-${season}.png`}
+              download={`soline-${season}.png`}
               className="inline-flex min-h-11 items-center justify-center rounded-full border border-ink/25 px-5 text-sm font-medium text-ink hover:border-ink/50"
             >
               Download my palette card
