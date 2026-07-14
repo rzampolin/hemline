@@ -9,8 +9,9 @@
  * isConfigured; AI_DAILY_BUDGET_USD is enforced by the packages/ai cost meter;
  * embed-on-ingest skips itself when the ML sidecar is absent).
  */
-import { startScheduler } from '../apps/ingest/src/schedule';
+import { installSchedulerProcessGuards, startScheduler } from '../apps/ingest/src/schedule';
 import { buildConnectors, openDb, parseArgs } from '../apps/ingest/src/sources';
 
+installSchedulerProcessGuards();
 const args = parseArgs(process.argv.slice(2));
 startScheduler(openDb(), buildConnectors(args));

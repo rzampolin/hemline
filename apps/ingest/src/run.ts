@@ -12,7 +12,7 @@
  * Per-source error isolation: one bad store never kills the run.
  */
 import { runPipeline, type PipelineResult } from './pipeline';
-import { startScheduler } from './schedule';
+import { installSchedulerProcessGuards, startScheduler } from './schedule';
 import { buildConnectors, openDb, parseArgs, shouldRunConnector } from './sources';
 
 async function main(): Promise<void> {
@@ -21,6 +21,7 @@ async function main(): Promise<void> {
   const connectors = buildConnectors(args);
 
   if (args.watch) {
+    installSchedulerProcessGuards();
     startScheduler(db, connectors);
     return; // node-cron keeps the process alive
   }
@@ -29,12 +30,15 @@ async function main(): Promise<void> {
   const results: { id: string; result?: PipelineResult; error?: string }[] = [];
 
   for (const connector of connectors) {
-    const gate = shouldRunConnector(db, connector);
-    if (!gate.run) {
-      console.log(`[ingest:${connector.id}] ${gate.reason} — skipping`);
-      continue;
-    }
     try {
+      // gate INSIDE the try — a throwing gate (e.g. SQLITE_BUSY) is this
+      // source's failure, never the whole run's (same class as the 2026-07-10
+      // scheduler poison, docs/decisions-scheduler.md #1)
+      const gate = shouldRunConnector(db, connector);
+      if (!gate.run) {
+        console.log(`[ingest:${connector.id}] ${gate.reason} — skipping`);
+        continue;
+      }
       const result = await runPipeline(db, connector, { extract: args.extract, embed: args.embed });
       results.push({ id: connector.id, result });
     } catch (e) {

@@ -7,13 +7,24 @@
  * Also registers the sold-detection verification jobs (VERIFY_ENABLE, default
  * on): a ~15-min drain of the clickout verification queue and an hourly
  * rolling sweep of the oldest-verified active listings (verification.ts).
+ *
+ * Reliability invariants (post-incident 2026-07-10, docs/decisions-scheduler.md):
+ * - ALL scheduled work is appended via TickChain.enqueue — a throwing gate or
+ *   rejecting job can never poison the serialization chain;
+ * - every ingest tick runs under a watchdog (INGEST_TICK_TIMEOUT_MS, def. 2h)
+ *   so one hung await can never freeze every later tick;
+ * - zombie ingest_runs rows (status='running' from a killed process) are swept
+ *   to error at boot;
+ * - a heartbeat file + per-day tick summary make silent cron death observable
+ *   (/api/health raises `scheduler_dead`).
  */
 import { pathToFileURL } from 'node:url';
 import cron from 'node-cron';
 import type { SourceConnector } from '@hemline/contracts';
 import { ensureSchema, type Db } from '@hemline/db';
-import { runPipeline } from './pipeline';
-import { buildConnectors, cadenceFor, openDb, parseArgs, shouldRunConnector } from './sources';
+import { createTickChain, runConnectorTick, sweepZombieRuns } from './scheduler-core';
+import { createSchedulerHeartbeat } from './scheduler-heartbeat';
+import { buildConnectors, cadenceFor, openDb, parseArgs } from './sources';
 import { drainVerificationQueue, runRollingVerification, verifyEnvConfig } from './verification';
 
 export interface ScheduledJob {
@@ -25,7 +36,11 @@ export interface ScheduledJob {
 export function startScheduler(db: Db, connectors: SourceConnector[]): ScheduledJob[] {
   const jobs: ScheduledJob[] = [];
   /** serialize runs so overlapping ticks (and politeness) stay sane */
-  let chain: Promise<unknown> = Promise.resolve();
+  const chain = createTickChain();
+  const heartbeat = createSchedulerHeartbeat();
+
+  // self-heal: close run rows orphaned by a previous kill (finalize never ran)
+  sweepZombieRuns(db);
 
   for (const connector of connectors) {
     const cadence = cadenceFor(db, connector);
@@ -34,18 +49,9 @@ export function startScheduler(db: Db, connectors: SourceConnector[]): Scheduled
       continue;
     }
     const task = cron.schedule(cadence, () => {
-      chain = chain.then(async () => {
-        const gate = shouldRunConnector(db, connector);
-        if (!gate.run) {
-          console.log(`[ingest:watch] ${connector.id} ${gate.reason} — tick skipped`);
-          return;
-        }
-        try {
-          await runPipeline(db, connector);
-        } catch (e) {
-          console.error(`[ingest:watch] ${connector.id} failed:`, e);
-        }
-      });
+      chain.enqueue(connector.id, () =>
+        runConnectorTick(db, connector, { onRun: (id) => heartbeat.recordTick(id) }),
+      );
     });
     jobs.push({ sourceId: connector.id, cadence, stop: () => void task.stop() });
     console.log(`[ingest:watch] scheduled ${connector.id} @ '${cadence}'`);
@@ -77,12 +83,9 @@ export function startScheduler(db: Db, connectors: SourceConnector[]): Scheduled
         continue;
       }
       const task = cron.schedule(job.cadence, () => {
-        chain = chain.then(async () => {
-          try {
-            await job.run();
-          } catch (e) {
-            console.error(`[ingest:watch] ${job.id} failed:`, e);
-          }
+        chain.enqueue(job.id, () => {
+          heartbeat.recordTick(job.id);
+          return job.run();
         });
       });
       jobs.push({ sourceId: job.id, cadence: job.cadence, stop: () => void task.stop() });
@@ -90,13 +93,35 @@ export function startScheduler(db: Db, connectors: SourceConnector[]): Scheduled
     }
   }
 
+  heartbeat.start();
+  jobs.push({
+    sourceId: 'scheduler:heartbeat',
+    cadence: `interval:${60_000}ms`,
+    stop: () => heartbeat.stop(),
+  });
+
   console.log(`[ingest:watch] ${jobs.length} job(s) registered — Ctrl-C to stop`);
   return jobs;
+}
+
+/**
+ * Process-level policy for the long-running scheduler entrypoints: log an
+ * unhandled rejection loudly but keep the process (and every cron job) alive.
+ * With enqueue-everywhere this should be unreachable from scheduled work; it
+ * guards stray fire-and-forget promises in connector code. Node's default
+ * (crash) turned one rejected promise into "every daily job silently dead
+ * until the next restart" during the 2026-07-10 incident window.
+ */
+export function installSchedulerProcessGuards(proc: NodeJS.Process = process): void {
+  proc.on('unhandledRejection', (reason) => {
+    console.error('[ingest:watch] UNHANDLED REJECTION (scheduler continues):', reason);
+  });
 }
 
 // Direct invocation: `npm run ingest:watch [-- --source=…]`
 const isMain = process.argv[1] != null && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
+  installSchedulerProcessGuards();
   const args = parseArgs(process.argv.slice(2));
   startScheduler(openDb(), buildConnectors(args));
 }
