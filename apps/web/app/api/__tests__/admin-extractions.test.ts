@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, ensureSchema, type Db } from '@hemline/db';
 import { __resetDbCache } from '../lib/db';
@@ -34,27 +35,30 @@ beforeAll(() => {
   delete process.env.ADMIN_BASIC_AUTH; // open admin (dev semantics) for the test
   __resetDbCache();
 
-  // realistic rows: healthy live-model confidences + one genuine low outlier
-  db.$client.exec(`
-    INSERT INTO sources (id, kind, display_name, cadence_cron)
-    VALUES ('shopify:qa.store', 'shopify', 'QA Store', '0 6 * * *');
-    INSERT INTO listings (id, source_id, source_listing_id, source_url, title, description,
-                          price_cents, content_hash, first_seen_at, last_seen_at)
-    VALUES
-      ('shopify:qa.store:1', 'shopify:qa.store', '1', 'https://qa.store/products/a',
-       'Silk midi dress', 'A silk midi', 12000, 'hash-a', 1, 1),
-      ('shopify:qa.store:2', 'shopify:qa.store', '2', 'https://qa.store/products/b',
-       'Linen maxi dress', 'A linen maxi', 9000, 'hash-b', 1, 1),
-      ('shopify:qa.store:3', 'shopify:qa.store', '3', 'https://qa.store/products/c',
-       'Mystery dress', NULL, 5000, 'hash-c', 1, 1);
-    INSERT INTO listing_images (listing_id, url, position)
-    VALUES ('shopify:qa.store:1', 'https://qa.store/img/a.jpg', 0);
-    INSERT INTO extractions (content_hash, listing_id, model, extraction_confidence, extracted_at)
-    VALUES
-      ('hash-a', 'shopify:qa.store:1', 'claude-haiku-4-5-20251001', 0.83, 100),
-      ('hash-b', 'shopify:qa.store:2', 'claude-haiku-4-5-20251001', 0.42, 200),
-      ('hash-c', 'shopify:qa.store:3', 'claude-haiku-4-5-20251001', 0.0, 300);
-  `);
+  // realistic rows: healthy live-model confidences + one genuine low outlier.
+  // Statements run individually via drizzle's typed `run(sql...)` — the raw
+  // `db.$client` handle isn't on the drizzle Db type.
+  const stmts = [
+    sql`INSERT INTO sources (id, kind, display_name, cadence_cron)
+        VALUES ('shopify:qa.store', 'shopify', 'QA Store', '0 6 * * *')`,
+    sql`INSERT INTO listings (id, source_id, source_listing_id, source_url, title, description,
+                              price_cents, content_hash, first_seen_at, last_seen_at)
+        VALUES
+          ('shopify:qa.store:1', 'shopify:qa.store', '1', 'https://qa.store/products/a',
+           'Silk midi dress', 'A silk midi', 12000, 'hash-a', 1, 1),
+          ('shopify:qa.store:2', 'shopify:qa.store', '2', 'https://qa.store/products/b',
+           'Linen maxi dress', 'A linen maxi', 9000, 'hash-b', 1, 1),
+          ('shopify:qa.store:3', 'shopify:qa.store', '3', 'https://qa.store/products/c',
+           'Mystery dress', NULL, 5000, 'hash-c', 1, 1)`,
+    sql`INSERT INTO listing_images (listing_id, url, position)
+        VALUES ('shopify:qa.store:1', 'https://qa.store/img/a.jpg', 0)`,
+    sql`INSERT INTO extractions (content_hash, listing_id, model, extraction_confidence, extracted_at)
+        VALUES
+          ('hash-a', 'shopify:qa.store:1', 'claude-haiku-4-5-20251001', 0.83, 100),
+          ('hash-b', 'shopify:qa.store:2', 'claude-haiku-4-5-20251001', 0.42, 200),
+          ('hash-c', 'shopify:qa.store:3', 'claude-haiku-4-5-20251001', 0.0, 300)`,
+  ];
+  for (const stmt of stmts) db.run(stmt);
 });
 
 afterAll(() => {
