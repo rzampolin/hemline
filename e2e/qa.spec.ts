@@ -105,13 +105,35 @@ test('quiz: ≤8 screens, progress everywhere, back preserves answers, no accoun
   expect(Date.now() - started).toBeLessThan(120_000);
 });
 
+/**
+ * First feed card whose hem can DISCRIMINATE between heights. Hems saturate:
+ * a 62.9″ gown is floor-length on 4'11" AND 6'0" (physically correct — the
+ * §5 ratio clamps at the floor), and "Length unverified" has no hem at all,
+ * so those cards can never show different copy per height. Very short zones
+ * (upper-thigh / above-knee) can also survive a 13″ height jump inside one
+ * zone; the middle zones (knee → ankle) always cross a §5 boundary.
+ */
+async function firstHeightDiscriminatingCard(page: Page) {
+  const cards = page.getByTestId('product-card');
+  await cards.first().waitFor();
+  const n = Math.min(await cards.count(), 12);
+  for (let i = 0; i < n; i++) {
+    const badge = (await cards.nth(i).getByTestId('hem-badge').textContent())?.trim() ?? '';
+    if (/(at the knee|below the knee|mid-calf|at the ankle)/i.test(badge)) return cards.nth(i);
+  }
+  throw new Error(
+    `no height-discriminating card in the first ${n} (all floor-saturated/unverified/too short)`,
+  );
+}
+
 /* ═══ C2 THE SIGNATURE FEATURE: same dress, different hem per height ══════ */
 
 test('signature: petite 4\'11" vs tall 6\'0" see different hems on the SAME dress (card + detail + diagram)', async ({ page, browser }) => {
   test.setTimeout(180_000);
-  // profile A: petite 4'11"
+  // profile A: petite 4'11" — on a card whose hem CAN move with height
+  // (a floor-length gown is floor-length on everyone; see helper above)
   await onboard(page, 4, 11);
-  const firstCard = page.getByTestId('product-card').first();
+  const firstCard = await firstHeightDiscriminatingCard(page);
   const cardBadgePetite = (await firstCard.getByTestId('hem-badge').textContent())!.trim();
   const href = await firstCard.getByRole('link').first().getAttribute('href');
   expect(href).toMatch(/\/dress\//);
@@ -237,8 +259,11 @@ test('feed: every card complete (hem/source/freshness/price), filters URL-reflec
   await page.reload();
   await expect(page.getByTestId('open-filters')).toHaveAttribute('aria-label', /3 active/);
 
-  // graceful empty state
-  await page.goto('/feed?q=zzzz-no-such-dress-zzzz');
+  // graceful empty state — reached via a constraint that GENUINELY yields
+  // zero (impossible price floor). A junk text query is the wrong probe:
+  // real-mode hybrid search legitimately finds semantic/lexical matches for
+  // almost any text, so "no results" must come from hard filters instead.
+  await page.goto('/feed?pmin=99999');
   await expect(page.getByText('Nothing matches — yet')).toBeVisible({ timeout: 15_000 });
   await shot(page, 'feed-empty');
   await page.getByRole('button', { name: 'Clear filters' }).click();
@@ -382,7 +407,8 @@ test('rack: save appears, unsave disappears, stale saves flagged possibly-sold',
 test('profile: editing height re-computes hem badges (regression-critical)', async ({ page }) => {
   test.setTimeout(120_000);
   await onboard(page, 4, 11);
-  const firstCard = page.getByTestId('product-card').first();
+  // a floor-saturated first card can't show the recompute — pick one that can
+  const firstCard = await firstHeightDiscriminatingCard(page);
   const href = (await firstCard.getByRole('link').first().getAttribute('href'))!;
   await page.goto(href);
   await expect(page.getByTestId('hem-module')).toBeVisible();
