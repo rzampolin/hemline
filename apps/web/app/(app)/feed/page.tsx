@@ -304,6 +304,15 @@ function FeedInner() {
             </svg>
           </form>
           <Link
+            href="/check"
+            aria-label="Paste a dress link to fit-check it"
+            className="flex size-10 items-center justify-center rounded-full border border-line bg-card text-ink-soft hover:text-ink"
+          >
+            <svg viewBox="0 0 20 20" className="size-5" aria-hidden="true">
+              <path d="M8.5 11.5 11.5 8.5M7 13l-1.8 1.8a2.5 2.5 0 0 1-3.5-3.5L4.5 8.5a2.5 2.5 0 0 1 3.5 0M13 7l1.8-1.8a2.5 2.5 0 0 1 3.5 3.5L15.5 11.5a2.5 2.5 0 0 1-3.5 0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </Link>
+          <Link
             href="/similar"
             aria-label="Find dresses like a photo"
             className="flex size-10 items-center justify-center rounded-full border border-line bg-card text-ink-soft hover:text-ink"

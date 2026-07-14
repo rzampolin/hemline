@@ -11,6 +11,7 @@ import type {
   ColorAnalysisQuizRequest,
   ColorAnalysisResult,
   ColorSeason,
+  FitCheckResponse,
   HemPosition,
   Listing,
   ListingDetailResponse,
@@ -427,5 +428,113 @@ export async function mockSimilarSearch(input: SimilarSearchInput): Promise<Simi
       totalMatched: items.length,
       rerank: { mode: 'deterministic', costUsd: null },
     },
+  };
+}
+
+/* ── fit check (paste-a-dress-link, mock) ────────────────────────────────── */
+
+export async function mockFitCheck(url: string): Promise<FitCheckResponse> {
+  await delay(1400);
+  const profile = getProfile();
+  const height = profile.heightInches ?? DEFAULT_HEIGHT_INCHES;
+
+  let parsed: URL | null = null;
+  try {
+    parsed = new URL(url);
+  } catch {
+    parsed = null;
+  }
+  if (!parsed || parsed.protocol !== 'https:') {
+    return emptyFitCheck('blocked_url', url);
+  }
+
+  // Deterministic "read": anchor to a catalog dress from the URL hash — the
+  // same trick mockSimilarSearch uses, so demos stay stable.
+  const byUrl = CATALOG.find((e) => url.includes(e.listing.sourceUrl));
+  const anchor = byUrl ?? CATALOG[hashString(url) % CATALOG.length];
+  const slugWords = parsed.pathname
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter((t) => t.length >= 3 && !['products', 'collections', 'www', 'html'].includes(t));
+  if (!byUrl && slugWords.length > 0 && !slugWords.some((w) => /dress|gown/.test(w))) {
+    return emptyFitCheck('not_a_dress', url);
+  }
+
+  const similar = CATALOG.filter((e) => e.listing.id !== anchor.listing.id)
+    .map((e) => ({ e, sim: cosine(anchor.attributeVector, e.attributeVector) }))
+    .sort((a, b) => b.sim - a.sim)
+    .slice(0, 8)
+    .map(({ e, sim }) => ({
+      listing: e.listing,
+      hem: hemForUser(e.listing, height, profile.heelPrefInches),
+      score: sim,
+      whyItWorks: null,
+      freshnessDecay: freshnessDecay(e.listing),
+    }));
+
+  const title = byUrl
+    ? anchor.listing.title
+    : slugWords.map((w) => w[0].toUpperCase() + w.slice(1)).join(' ') || anchor.listing.title;
+
+  return {
+    outcome: 'ok',
+    product: {
+      url,
+      domain: parsed.hostname.replace(/^www\./, ''),
+      title,
+      brand: anchor.listing.brand,
+      priceCents: anchor.listing.priceCents,
+      currency: anchor.listing.currency,
+      imageUrl: anchor.listing.images[0] ?? null,
+      sizeLabels: anchor.listing.sizeLabels,
+      availability: anchor.listing.availability,
+      via: 'jsonld',
+    },
+    hem: hemForUser(anchor.listing, height, profile.heelPrefInches),
+    lengthClass: anchor.listing.lengthClass,
+    lengthInches: anchor.listing.lengthInches,
+    lengthBasis: anchor.listing.lengthBasis ?? null,
+    modelHeightInches: null,
+    sizeMatch:
+      profile.sizesNormalized.length === 0
+        ? 'unknown'
+        : anchor.listing.sizeNormalized.some((n) => profile.sizesNormalized.includes(n))
+          ? 'in_your_size'
+          : 'not_listed',
+    extractionMode: 'mock',
+    matchBasis: 'attributes',
+    similar,
+    inCatalog: Boolean(byUrl),
+    keywords: slugWords.slice(0, 6),
+    cached: false,
+  };
+}
+
+function emptyFitCheck(outcome: FitCheckResponse['outcome'], url: string): FitCheckResponse {
+  let keywords: string[] = [];
+  try {
+    keywords = new URL(url).pathname
+      .toLowerCase()
+      .split(/[^a-z]+/)
+      .filter((t) => t.length >= 3 && !['products', 'collections', 'www', 'html'].includes(t))
+      .slice(0, 6);
+  } catch {
+    keywords = [];
+  }
+  return {
+    outcome,
+    product: null,
+    hem: null,
+    lengthClass: null,
+    lengthInches: null,
+    lengthBasis: null,
+    modelHeightInches: null,
+    sizeMatch: 'unknown',
+    extractionMode: 'mock',
+    matchBasis: 'none',
+    similar: [],
+    inCatalog: false,
+    keywords,
+    cached: false,
   };
 }

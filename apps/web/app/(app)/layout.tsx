@@ -1,6 +1,6 @@
 'use client';
 
-/** App shell: bottom nav Rack / Saved / Profile (PRODUCT_SPEC §4.4). */
+/** App shell: bottom nav Rack / Check / Saved / Profile (PRODUCT_SPEC §4.4). */
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@hemline/ui';
@@ -11,6 +11,14 @@ const TABS = [
     label: 'Rack',
     icon: (
       <path d="M3 5h14M10 5v2m0 0c-3 3-6 4-6 7a6 6 0 0 0 12 0c0-3-3-4-6-7Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    ),
+  },
+  {
+    // paste-a-dress-link fit check (flagship, 2026-07-13)
+    href: '/check',
+    label: 'Check',
+    icon: (
+      <path d="M8.5 11.5 11.5 8.5M7 13l-1.8 1.8a2.5 2.5 0 0 1-3.5-3.5L4.5 8.5a2.5 2.5 0 0 1 3.5 0M13 7l1.8-1.8a2.5 2.5 0 0 1 3.5 3.5L15.5 11.5a2.5 2.5 0 0 1-3.5 0" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     ),
   },
   {

@@ -12,6 +12,7 @@ import type {
   ColorAnalysisPut,
   ColorAnalysisQuizRequest,
   ColorAnalysisResult,
+  FitCheckResponse,
   ListingDetailResponse,
   MetaFiltersResponse,
   ProfilePatch,
@@ -26,6 +27,7 @@ import {
   MockApiError,
   mockColorAnalysis,
   mockColorAnalysisQuiz,
+  mockFitCheck,
   mockGetListing,
   mockGetMetaFilters,
   mockGetSession,
@@ -242,6 +244,21 @@ export const api = {
         rerank: { mode: 'deterministic', costUsd: null },
       },
     };
+  },
+
+  /**
+   * Paste-a-dress-link fit check (POST /api/fit-check). The server fetches
+   * the pasted PDP, reads the garment, and answers with HER hem verdict plus
+   * similar in-catalog alternatives. Every failure mode is an honest outcome
+   * in the response — this only throws on transport-level errors.
+   */
+  fitCheck(url: string): Promise<FitCheckResponse> {
+    return MOCK_MODE
+      ? mockFitCheck(url)
+      : http<FitCheckResponse>('/api/fit-check', {
+          method: 'POST',
+          body: JSON.stringify({ url }),
+        });
   },
 };
 
