@@ -112,7 +112,7 @@ export interface ExtractionServiceOptions {
   concurrency?: number;
   /**
    * 'base64' (default): we download the primary image ourselves — politely,
-   * under the identified HemlineBot UA — and inline it, so the API never
+   * under the identified SolineBot UA — and inline it, so the API never
    * fetches URLs (robots.txt blocks on AI fetchers, decisions #25). A failed
    * download downgrades that listing to text-only extraction up front, with
    * no wasted API call. 'url': legacy API-side fetch (cheap escape hatch).

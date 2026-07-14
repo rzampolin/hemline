@@ -6,7 +6,7 @@
  *   npm run verify:listings -- --rolling=200       # override the rolling batch size
  *   npm run verify:listings -- --queue-only        # drain the clickout queue, skip the sweep
  *
- * Pure HTTP through the politeness stack (HemlineBot UA, ≥1s/host, one
+ * Pure HTTP through the politeness stack (SolineBot UA, ≥1s/host, one
  * 429/5xx retry) — no AI cost. Prod (Dockerfile bundle):
  *   fly ssh console -C "node /app/dist/verify-listings.mjs"
  */

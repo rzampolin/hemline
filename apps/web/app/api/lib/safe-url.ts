@@ -204,7 +204,7 @@ export async function safeFetchExternalPage(
   const maxRedirects = options.maxRedirects ?? SAFE_FETCH_MAX_REDIRECTS;
   const userAgent =
     options.userAgent ??
-    `HemlineBot/1.0 (+${process.env.CRAWLER_CONTACT ?? 'rzampolin15@gmail.com'})`;
+    `SolineBot/1.0 (+${process.env.CRAWLER_CONTACT ?? 'rzampolin15@gmail.com'})`;
 
   const deadline = AbortSignal.timeout(timeoutMs);
   let current = rawUrl;

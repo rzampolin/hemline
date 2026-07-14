@@ -127,7 +127,7 @@ test('/about renders the full story; landing + about desktop/mobile shots', asyn
   /* ── about (mobile-first viewport from the project config) ── */
   const res = await page.goto('/about');
   expect(res?.status()).toBe(200);
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('How Hemline works');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('How Soline works');
   await expect(page.getByRole('heading', { name: 'The hem math, in plain language' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Privacy, plainly' })).toBeVisible();
   await shot(page, 'about-mobile');

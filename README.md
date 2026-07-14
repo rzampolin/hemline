@@ -1,6 +1,6 @@
-# Hemline
+# Soline
 
-Personal dress-shopping assistant (mobile-first web). Hemline aggregates in-stock dresses
+Personal dress-shopping assistant (mobile-first web). Soline aggregates in-stock dresses
 from resale (eBay) + DTC Shopify brands, extracts structured attributes with the Claude
 API, and personalizes results — including the moat: **effective length**, i.e. where each
 hem actually falls on *your* body given your height.

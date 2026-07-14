@@ -1,4 +1,4 @@
-# Deploying Hemline to Fly.io
+# Deploying Soline to Fly.io
 
 One machine, one volume, one container running the web server, the ingest
 cron scheduler, **and the FashionSigLIP ML sidecar** (baked into the image —

@@ -4,11 +4,11 @@
  *
  * All connector HTTP goes through `politeFetch`: requests to the same host are
  * serialized on a per-host queue with a minimum delay between them, carry the
- * HemlineBot User-Agent, and get one retry with backoff on 429/5xx.
+ * SolineBot User-Agent, and get one retry with backoff on 429/5xx.
  */
 
 export function hemlineUserAgent(env: NodeJS.ProcessEnv = process.env): string {
-  return `HemlineBot/1.0 (+${env.CRAWLER_CONTACT ?? 'rzampolin15@gmail.com'})`;
+  return `SolineBot/1.0 (+${env.CRAWLER_CONTACT ?? 'rzampolin15@gmail.com'})`;
 }
 
 export function defaultCrawlDelayMs(env: NodeJS.ProcessEnv = process.env): number {

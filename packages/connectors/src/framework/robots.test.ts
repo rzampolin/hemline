@@ -29,12 +29,12 @@ describe('isPathAllowed', () => {
     expect(isPathAllowed(txt, '/products.json')).toBe(false);
   });
 
-  it('prefers a HemlineBot-specific group over *', () => {
+  it('prefers a SolineBot-specific group over *', () => {
     const txt = `
 User-agent: *
 Disallow: /
 
-User-agent: HemlineBot
+User-agent: SolineBot
 Allow: /products.json
 Disallow: /
 `;

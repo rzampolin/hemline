@@ -14,12 +14,12 @@ import { MarketingFooter } from './footer';
 import { LandingStrip } from './strip';
 
 export const metadata: Metadata = {
-  // title inherits the root default ('Hemline — dresses that actually fit');
+  // title inherits the root default ('Soline — dresses that actually fit');
   // the root template would double the brand if set as a string here.
   description:
-    'That maxi? It’s a midi on you. Hemline re-measures 12,800+ dresses from eBay and 35 boutiques for your exact height — no account, no trackers.',
+    'That maxi? It’s a midi on you. Soline re-measures 12,800+ dresses from eBay and 35 boutiques for your exact height — no account, no trackers.',
   openGraph: {
-    title: 'Hemline — dresses that actually fit',
+    title: 'Soline — dresses that actually fit',
     description:
       'That maxi? It’s a midi on you. 12,800+ dresses re-measured for your exact height.',
     url: '/',
@@ -87,7 +87,7 @@ export default function LandingPage() {
   return (
     <main className="mx-auto min-h-dvh max-w-6xl px-6 pt-10 pb-10 md:pt-16">
       <div className="flex items-baseline justify-between">
-        <p className="font-display text-lg tracking-wide text-accent">Hemline</p>
+        <p className="font-display text-lg tracking-wide text-accent">Soline</p>
         <Link
           href="/about"
           className="text-sm text-ink-soft underline decoration-line underline-offset-4 transition-colors hover:text-ink"
@@ -106,7 +106,7 @@ export default function LandingPage() {
             .
           </h1>
           <p className="mt-6 text-lg leading-relaxed text-ink-soft">
-            Length labels describe a fit model, not you. Hemline re-measures every dress for your
+            Length labels describe a fit model, not you. Soline re-measures every dress for your
             exact height — one feed across resale and the brands you love, with the hem truth on
             every card.
           </p>

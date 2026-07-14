@@ -11,7 +11,7 @@
 import { politeFetch, type PolitenessOptions } from './politeness';
 
 /** Our product token for robots.txt group matching. */
-export const ROBOTS_AGENT_TOKEN = 'hemlinebot';
+export const ROBOTS_AGENT_TOKEN = 'solinebot';
 
 interface RobotsRule {
   allow: boolean;
@@ -97,7 +97,7 @@ export function isPathAllowed(
 }
 
 export interface RobotsGate {
-  /** Is crawling `path` on `origin` allowed for HemlineBot? Cached per origin. */
+  /** Is crawling `path` on `origin` allowed for SolineBot? Cached per origin. */
   isAllowed(origin: string, path: string): Promise<boolean>;
 }
 

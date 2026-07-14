@@ -60,7 +60,7 @@ export function AdminDashboard() {
     <main className="mx-auto min-h-dvh max-w-6xl px-4 py-6 lg:px-8">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl text-ink">Hemline Ops</h1>
+          <h1 className="font-display text-3xl text-ink">Soline Ops</h1>
           <p className="text-sm text-ink-soft">
             Crawlers, catalog, extraction QA, clickouts · refreshes every 60s
           </p>

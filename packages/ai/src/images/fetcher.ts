@@ -6,13 +6,13 @@
  * is disallowed by the website's robots.txt file" stopped the hem-lengths
  * vision pass at 5/10045). The same CDNs happily serve normal, identified
  * crawlers — our embed sidecar has downloaded thousands of these exact images
- * under HemlineBot with politeness. So we download the image ourselves and
+ * under SolineBot with politeness. So we download the image ourselves and
  * send it to the API as base64; the API never fetches anything.
  *
  * Deliberately minimal and dependency-free (a subset of the connectors
  * politeness stack, re-implemented here so packages/ai does not grow an edge
  * onto packages/connectors and its drizzle dependency):
- *   - identified HemlineBot User-Agent (same contact as the crawlers)
+ *   - identified SolineBot User-Agent (same contact as the crawlers)
  *   - per-attempt timeout, retry with backoff on network errors / 429 / 5xx
  *   - best-effort per-host min delay (no per-host serialization — the vision
  *     runners' concurrency is low and each request is followed by an API call,
@@ -52,7 +52,7 @@ export const DEFAULT_IMAGE_CACHE_BYTES = 64 * 1024 * 1024;
 
 export function hemlineImageUserAgent(env: NodeJS.ProcessEnv = process.env): string {
   // Same identity string as packages/connectors politeness.ts — one bot name.
-  return `HemlineBot/1.0 (+${env.CRAWLER_CONTACT ?? 'rzampolin15@gmail.com'})`;
+  return `SolineBot/1.0 (+${env.CRAWLER_CONTACT ?? 'rzampolin15@gmail.com'})`;
 }
 
 export function defaultImageFetchDelayMs(env: NodeJS.ProcessEnv = process.env): number {

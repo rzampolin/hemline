@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Profile / settings (PRODUCT_SPEC A3, §4.7): edit everything Hemline knows —
+ * Profile / settings (PRODUCT_SPEC A3, §4.7): edit everything Soline knows —
  * fit, budget, colors (season + palette + boost toggle), taste, account stub,
  * alerts stub, reset.
  */
@@ -51,7 +51,7 @@ export default function ProfilePage() {
     <main className="mx-auto max-w-md px-4 pt-4 pb-8">
       <h1 className="font-display text-2xl text-ink">Your profile</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        Everything Hemline knows about you. Edits re-rank your feed on next load.
+        Everything Soline knows about you. Edits re-rank your feed on next load.
       </p>
 
       {/* ── My Fit ── */}
@@ -235,7 +235,7 @@ export default function ProfilePage() {
         <p className="text-sm text-ink-soft">
           {Object.keys(profile.styleTags).length > 0
             ? 'Learned from your swipes and picks. Retune it any time.'
-            : 'Swipe a deck to teach Hemline your taste.'}
+            : 'Swipe a deck to teach Soline your taste.'}
         </p>
         <Button variant="outline" className="mt-3" onClick={() => router.push('/calibrate')}>
           Re-run the swipe deck

@@ -10,7 +10,7 @@ import type { Metadata } from 'next';
 import { AdminDashboard } from './dashboard';
 
 export const metadata: Metadata = {
-  title: 'Hemline — Admin',
+  title: 'Soline — Admin',
   robots: { index: false, follow: false },
 };
 

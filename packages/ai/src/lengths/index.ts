@@ -250,7 +250,7 @@ export interface LengthEstimatorOptions {
   imageDownloadAttempts?: number;
   /**
    * 'base64' (default): we download the image ourselves — politely, under the
-   * identified HemlineBot UA — and inline it, so the API never fetches URLs
+   * identified SolineBot UA — and inline it, so the API never fetches URLs
    * (robots.txt blocks on AI fetchers ended URL mode in prod, decisions #25).
    * 'url': legacy API-side fetch, kept only as a cheap escape hatch.
    */
@@ -305,7 +305,7 @@ export function createLengthEstimator(options: LengthEstimatorOptions = {}): Len
       // of re-billing a dead URL forever (decisions #23, #25).
       let imageBlock: Anthropic.ImageBlockParam;
       if (imageDelivery === 'base64') {
-        // Default: WE download the image (politely, identified HemlineBot UA;
+        // Default: WE download the image (politely, identified SolineBot UA;
         // the fetcher owns the retry budget) and inline it as base64 — the
         // API never fetches URLs, so robots.txt blocks on AI fetchers and
         // unencoded-paren 400s cannot stop the run (decisions #25).

@@ -56,7 +56,7 @@ describe('etag cache (DB-backed over sources.etag_json)', () => {
 describe('politeFetch', () => {
   beforeEach(() => resetPoliteness());
 
-  it('sets the HemlineBot User-Agent with the crawler contact', async () => {
+  it('sets the SolineBot User-Agent with the crawler contact', async () => {
     let ua: string | null = null;
     const fetchImpl = vi.fn(async (_u: string | URL, init?: RequestInit) => {
       ua = new Headers(init?.headers).get('user-agent');
@@ -65,7 +65,7 @@ describe('politeFetch', () => {
     await politeFetch('https://a.example/x', undefined, { fetchImpl, minDelayMs: 0 });
     expect(ua).toBe(hemlineUserAgent());
     expect(hemlineUserAgent({ CRAWLER_CONTACT: 'me@x.com' } as NodeJS.ProcessEnv)).toBe(
-      'HemlineBot/1.0 (+me@x.com)',
+      'SolineBot/1.0 (+me@x.com)',
     );
   });
 

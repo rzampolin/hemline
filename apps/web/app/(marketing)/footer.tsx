@@ -10,7 +10,7 @@ export function MarketingFooter() {
     <footer className="mt-20 border-t border-line pt-6 pb-2 text-xs text-ink-faint">
       <nav aria-label="Footer" className="flex flex-wrap gap-x-5 gap-y-2">
         <Link href="/about" className="transition-colors hover:text-ink">
-          How Hemline works
+          How Soline works
         </Link>
         <Link href="/about#privacy" className="transition-colors hover:text-ink">
           Privacy, plainly
@@ -23,7 +23,7 @@ export function MarketingFooter() {
         </Link>
       </nav>
       <p className="mt-4 max-w-xl leading-relaxed">
-        Hemline links you out to eBay and brand sites to buy — we never own checkout. Photos you
+        Soline links you out to eBay and brand sites to buy — we never own checkout. Photos you
         upload for color analysis are analyzed in memory, then discarded.
       </p>
     </footer>

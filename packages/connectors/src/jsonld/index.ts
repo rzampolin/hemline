@@ -7,7 +7,7 @@
  *             /sitemap.xml) → sitemap indexes → product URLs filtered by the
  *             per-store productUrlPattern, dress-keyword URLs first, capped
  *             per run (default 500 — skips are LOGGED, never silent).
- * Extraction: politeFetch per PDP (per-host delay, HemlineBot UA, per-URL
+ * Extraction: politeFetch per PDP (per-host delay, SolineBot UA, per-URL
  *             ETag/If-None-Match — a 304 re-emits the stored listing), robots
  *             gate per path, JSON-LD → RawListing (normalize.ts).
  * Isolation:  per-URL try/catch; a consecutive-failure circuit breaker stops

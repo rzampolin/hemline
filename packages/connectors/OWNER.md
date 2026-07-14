@@ -6,7 +6,7 @@
 ## Deliverables (in order — doc §10 track A)
 1. Fixtures connector *(scaffolded — loader + connector work; refine as needed)*
 2. Framework: `framework/registry.ts` (done, trivial), `framework/politeness.ts`
-   (per-host ≥1s rate limit, UA `HemlineBot/1.0 (+contact)`), `framework/etag-cache.ts`
+   (per-host ≥1s rate limit, UA `SolineBot/1.0 (+contact)`), `framework/etag-cache.ts`
    (DB-backed, `sources.etag_json`)
 3. Shopify products.json crawler — curate & VERIFY `shopify/stores.json`
    (~40 stores; some disable products.json). Max 1 crawl/day/store.

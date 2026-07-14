@@ -160,11 +160,11 @@ function FitCheckResult({
       },
       not_a_dress: {
         title: 'That doesn’t look like a dress',
-        body: 'We read the page, but the product doesn’t parse as a dress — Hemline only does dress math.',
+        body: 'We read the page, but the product doesn’t parse as a dress — Soline only does dress math.',
       },
       child_audience: {
         title: 'That looks like a kids’ item',
-        body: 'We read the page, but this looks like children’s clothing — Hemline only carries and checks adult dresses.',
+        body: 'We read the page, but this looks like children’s clothing — Soline only carries and checks adult dresses.',
       },
     };
     const c = copy[result.outcome] ?? copy.unreadable;

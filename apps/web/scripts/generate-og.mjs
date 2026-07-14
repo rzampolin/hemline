@@ -20,7 +20,7 @@ const svg = `
   <rect width="1200" height="630" fill="#faf6ef"/>
   <rect x="0" y="0" width="1200" height="10" fill="#8a3033"/>
 
-  <text x="96" y="150" font-family="Georgia, 'Times New Roman', serif" font-size="44" fill="#8a3033" letter-spacing="2">Hemline</text>
+  <text x="96" y="150" font-family="Georgia, 'Times New Roman', serif" font-size="44" fill="#8a3033" letter-spacing="2">Soline</text>
 
   <text x="96" y="296" font-family="Georgia, 'Times New Roman', serif" font-size="80" font-weight="500" fill="#221d18">Dresses that actually</text>
   <text x="96" y="396" font-family="Georgia, 'Times New Roman', serif" font-size="80" font-weight="500" fill="#221d18">fit <tspan fill="#8a3033" font-style="italic">you</tspan>.</text>

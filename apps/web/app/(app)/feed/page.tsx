@@ -280,7 +280,7 @@ function FeedInner() {
       <div className="sticky top-0 z-30 -mx-4 border-b border-line/70 bg-cream/95 px-4 pt-2 pb-3 backdrop-blur">
         <div className="flex items-center gap-2">
           <Link href="/feed" className="pr-1 font-display text-lg text-accent">
-            Hemline
+            Soline
           </Link>
           <form
             role="search"

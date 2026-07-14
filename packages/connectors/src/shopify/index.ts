@@ -3,7 +3,7 @@
  *
  * - paginates https://{store}/products.json?limit=250&page=N until a short page
  * - dresses only (product_type/tags/title heuristics — normalize.ts)
- * - politeness: HemlineBot UA, per-host delay (politeFetch), robots.txt gate
+ * - politeness: SolineBot UA, per-host delay (politeFetch), robots.txt gate
  * - ETag/If-None-Match on page 1 via the EtagCache contract; a 304 short-
  *   circuits the crawl and re-emits the source's existing listings so
  *   last_seen_at still bumps

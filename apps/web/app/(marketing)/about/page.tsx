@@ -1,5 +1,5 @@
 /**
- * /about — "How Hemline works": the fit problem, the hem math in plain
+ * /about — "How Soline works": the fit problem, the hem math in plain
  * language, optional color analysis, where the catalog comes from, and the
  * privacy promises. Every claim on this page is verified against code/docs
  * (see docs/decisions-marketing.md — claims table) — edit with the same care.
@@ -11,11 +11,11 @@ import Link from 'next/link';
 import { MarketingFooter } from '../footer';
 
 export const metadata: Metadata = {
-  title: 'How Hemline works',
+  title: 'How Soline works',
   description:
     'Where each hem actually falls on you, computed from garment measurements and your height. How the catalog is gathered, what happens to your selfie, and what we do and don’t record.',
   openGraph: {
-    title: 'How Hemline works',
+    title: 'How Soline works',
     description:
       'The hem math in plain language, where 12,800+ dresses come from, and privacy promises we can keep.',
     url: '/about',
@@ -47,7 +47,7 @@ export default function AboutPage() {
     <main className="mx-auto min-h-dvh max-w-3xl px-6 pt-10 pb-10 md:pt-16">
       <div className="flex items-baseline justify-between">
         <Link href="/" className="font-display text-lg tracking-wide text-accent">
-          Hemline
+          Soline
         </Link>
         <Link
           href="/onboarding"
@@ -59,7 +59,7 @@ export default function AboutPage() {
 
       <header className="mt-10 md:mt-14">
         <h1 className="font-display text-4xl leading-[1.08] font-medium text-ink md:text-5xl">
-          How Hemline works
+          How Soline works
         </h1>
         <p className="mt-5 max-w-2xl text-lg leading-relaxed text-ink-soft">
           Dresses are the worst-fitting thing you can buy online, and the length label is most of
@@ -122,7 +122,7 @@ export default function AboutPage() {
 
       <Section id="catalog" kicker="The catalog" title="Where the dresses come from">
         <p>
-          Hemline reads public listings — the same pages you could open yourself — from eBay and
+          Soline reads public listings — the same pages you could open yourself — from eBay and
           about 35 boutique and brand sites, over 12,800 in-stock dresses at last count. Brand
           catalogs are re-crawled daily and eBay every few hours, and a dress that stops appearing
           in a seller’s listings gets flagged as possibly sold and pulled from your feed, so
@@ -158,7 +158,7 @@ export default function AboutPage() {
             },
             {
               head: 'Nothing about you is hidden from you.',
-              body: 'Everything Hemline knows — height, sizes, budget, palette, taste — fits on one settings screen, and you can view, change, or clear any of it there whenever you like.',
+              body: 'Everything Soline knows — height, sizes, budget, palette, taste — fits on one settings screen, and you can view, change, or clear any of it there whenever you like.',
             },
           ].map((item) => (
             <li key={item.head} className="rounded-2xl border border-line bg-card p-4">

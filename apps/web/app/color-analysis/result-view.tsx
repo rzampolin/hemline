@@ -45,7 +45,7 @@ export function ResultView({ result, onRetake, retakeLabel }: { result: ColorAna
         ctx.fillStyle = '#8a3033';
         ctx.font = 'italic 44px Georgia, serif';
         ctx.textAlign = 'center';
-        ctx.fillText('Hemline', W / 2, 110);
+        ctx.fillText('Soline', W / 2, 110);
         ctx.fillStyle = '#221d18';
         ctx.font = '500 92px Georgia, serif';
         ctx.fillText(info.label, W / 2, 240);
@@ -88,7 +88,7 @@ export function ResultView({ result, onRetake, retakeLabel }: { result: ColorAna
       <div className="flex flex-col items-center px-6 pb-10 text-center animate-rise">
         <p className="mt-2 text-xs font-semibold tracking-widest text-accent uppercase">Saved to your profile</p>
         <div className="mt-4 w-full max-w-sm rounded-3xl border border-line bg-card p-6 shadow-lift">
-          <p className="font-display text-lg text-accent italic">Hemline</p>
+          <p className="font-display text-lg text-accent italic">Soline</p>
           <h2 className="mt-1 font-display text-3xl text-ink">{info.label}</h2>
           <p className="mt-1 text-sm text-ink-soft">{info.tagline}</p>
           <div className="mt-5 grid grid-cols-5 gap-3">

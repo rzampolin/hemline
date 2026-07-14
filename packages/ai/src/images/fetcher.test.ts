@@ -1,7 +1,7 @@
 /**
  * Polite image fetcher tests — base64 image delivery (decisions #25):
  * media sniffing, oversized-image downscale rescue, hard-cap abort, retry
- * semantics, LRU + in-flight dedupe, and the identified HemlineBot User-Agent.
+ * semantics, LRU + in-flight dedupe, and the identified SolineBot User-Agent.
  */
 import sharp from 'sharp';
 import { describe, expect, it, vi } from 'vitest';
@@ -85,12 +85,12 @@ describe('createImageFetcher', () => {
     expect(f.stats).toMatchObject({ fetches: 1, cacheHits: 0, failures: 0 });
   });
 
-  it('sends the identified HemlineBot User-Agent (the whole point: we are a polite, NON-AI-labeled fetcher)', async () => {
+  it('sends the identified SolineBot User-Agent (the whole point: we are a polite, NON-AI-labeled fetcher)', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(imageResponse(JPEG));
     await fetcher(fetchImpl).fetchImage('https://cdn.example.com/a.jpg');
     const init = fetchImpl.mock.calls[0][1] as RequestInit;
     expect((init.headers as Record<string, string>)['user-agent']).toBe(hemlineImageUserAgent());
-    expect(hemlineImageUserAgent()).toContain('HemlineBot');
+    expect(hemlineImageUserAgent()).toContain('SolineBot');
   });
 
   it('rejects images over the HARD cap with a clear too_large marker (declared Content-Length)', async () => {

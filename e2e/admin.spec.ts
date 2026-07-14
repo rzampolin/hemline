@@ -14,7 +14,7 @@ test.describe('admin dashboard', () => {
 
   test('renders crawler health, catalog overview, QA list, clickouts', async ({ page }) => {
     await page.goto('/admin');
-    await expect(page.getByRole('heading', { name: 'Hemline Ops' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Soline Ops' })).toBeVisible();
 
     // catalog overview header (additive aggregate)
     await expect(page.getByText('Active listings', { exact: true })).toBeVisible();
