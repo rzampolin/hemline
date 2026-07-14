@@ -181,6 +181,18 @@ const STATEMENTS = [
     enqueued_at INTEGER NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_verification_queue_time ON verification_queue(enqueued_at)`,
+  `CREATE TABLE IF NOT EXISTS app_errors (
+    stack_hash    TEXT PRIMARY KEY,
+    route         TEXT NOT NULL,
+    message       TEXT NOT NULL,
+    stack         TEXT,
+    count         INTEGER NOT NULL DEFAULT 1,
+    hour_bucket   INTEGER NOT NULL,
+    hour_count    INTEGER NOT NULL DEFAULT 1,
+    first_seen_at INTEGER NOT NULL,
+    last_seen_at  INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_app_errors_last_seen ON app_errors(last_seen_at)`,
   `CREATE TABLE IF NOT EXISTS extraction_corrections (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     content_hash  TEXT NOT NULL,

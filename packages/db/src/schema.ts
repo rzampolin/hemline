@@ -396,6 +396,40 @@ export const verificationQueue = sqliteTable(
   (t) => [index('idx_verification_queue_time').on(t.enqueuedAt)],
 );
 
+/**
+ * Server-side error tracking (additive, 2026-07-13 ops). One row per DEDUPED
+ * error group — the PK is a normalized stack hash (route + digit-stripped
+ * message + top stack frames with line/col numbers removed), so repeats bump
+ * `count` instead of growing the table. Bounded by design: recordAppError
+ * prunes to a max row count + max age on every insert of a NEW group.
+ *
+ * hour_bucket/hour_count give a cheap "errors this hour" signal for the
+ * /api/health spike alert without storing per-event rows: the counter resets
+ * whenever the wall-clock hour (floor(now/3600s)) rolls over.
+ */
+export const appErrors = sqliteTable(
+  'app_errors',
+  {
+    /** sha256 of normalized (route, message, top stack frames) */
+    stackHash: text('stack_hash').primaryKey(),
+    /** where it happened: 'api:search', 'onRequestError:/dress/[id]', … */
+    route: text('route').notNull(),
+    /** latest message for the group (truncated) */
+    message: text('message').notNull(),
+    /** latest stack for the group (truncated), nullable */
+    stack: text('stack'),
+    /** total occurrences since first_seen_at */
+    count: integer('count').notNull().default(1),
+    /** floor(lastSeenAt / 1h) — wall-clock hour of the running counter */
+    hourBucket: integer('hour_bucket').notNull(),
+    /** occurrences inside hour_bucket (spike detection) */
+    hourCount: integer('hour_count').notNull().default(1),
+    firstSeenAt: integer('first_seen_at').notNull(),
+    lastSeenAt: integer('last_seen_at').notNull(),
+  },
+  (t) => [index('idx_app_errors_last_seen').on(t.lastSeenAt)],
+);
+
 /** Spec G2: manual extraction-correction log (prompt-tuning audit trail). */
 export const extractionCorrections = sqliteTable('extraction_corrections', {
   id: integer('id').primaryKey({ autoIncrement: true }),

@@ -10,6 +10,7 @@ export * from './swipes';
 export * from './saves';
 export * from './alerts';
 export * from './admin';
+export * from './app-errors';
 export * from './clickouts';
 export * from './analytics';
 export * from './verification';
