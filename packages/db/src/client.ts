@@ -28,5 +28,11 @@ export function createDb(opts: CreateDbOptions = {}): Db {
   const sqlite = new Database(file);
   sqlite.pragma('journal_mode = WAL');
   sqlite.pragma('foreign_keys = ON');
+  // Two writer processes share this file in prod (web + ingest scheduler).
+  // Without a busy timeout a write-lock collision throws SQLITE_BUSY
+  // immediately — the exact throw class that poisoned the scheduler chain in
+  // the 2026-07-10 outage (docs/decisions-scheduler.md #1). 5s of retrying
+  // inside SQLite absorbs normal checkpoint/write contention.
+  sqlite.pragma('busy_timeout = 5000');
   return drizzle(sqlite, { schema });
 }

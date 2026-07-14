@@ -35,6 +35,21 @@ export function isPlaceholderImage(url: string): boolean {
   }
 }
 
+/**
+ * Per-request embedder timeout for embed-on-ingest. Was 0 (disabled, "bulk
+ * runs") — which meant a wedged sidecar hung the ingest tick FOREVER and froze
+ * the whole scheduler chain (2026-07-10 incident class,
+ * docs/decisions-scheduler.md #2). EmbedderProcess request timers start when a
+ * request is QUEUED, so the budget scales with the batch: base (model load +
+ * one image) + 15s per queued task. Generous but finite; the tick watchdog is
+ * the backstop.
+ */
+export function embedTimeoutMs(queuedTasks: number, env: NodeJS.ProcessEnv = process.env): number {
+  const base = Number(env.EMBED_TIMEOUT_MS);
+  const floor = Number.isFinite(base) && base > 0 ? base : 120_000;
+  return floor + queuedTasks * 15_000;
+}
+
 /** The slice of EmbedderProcess the ingest step needs (mockable in tests). */
 export interface EmbedderBridge {
   embed(req: { imageUrl: string }): Promise<Float32Array>;
@@ -94,7 +109,8 @@ export async function embedMissingForSources(
 
   const createEmbedder =
     deps.createEmbedder ??
-    ((p: EmbedderPaths): EmbedderBridge => new EmbedderProcess({ paths: p, batchSize: 8, timeoutMs: 0 }));
+    ((p: EmbedderPaths): EmbedderBridge =>
+      new EmbedderProcess({ paths: p, batchSize: 8, timeoutMs: embedTimeoutMs(tasks.length) }));
   const embedder = createEmbedder(paths);
   logger.info(`[embed] embedding ${tasks.length} new/changed listing(s) (${EMBEDDING_MODEL_TAG}, local compute)`);
 

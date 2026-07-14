@@ -23,6 +23,19 @@ export interface PolitenessOptions {
   retries?: number;
   /** injectable for tests */
   fetchImpl?: typeof fetch;
+  /**
+   * hard per-attempt timeout (default: HEMLINE_FETCH_TIMEOUT_MS or 60s).
+   * A stalled socket must never hang an ingest/verify tick forever — the
+   * scheduler watchdog is the backstop, this is the first line
+   * (docs/decisions-scheduler.md #2). Ignored when the caller passes its own
+   * AbortSignal in `init`.
+   */
+  timeoutMs?: number;
+}
+
+export function defaultFetchTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const v = Number(env.HEMLINE_FETCH_TIMEOUT_MS);
+  return Number.isFinite(v) && v > 0 ? v : 60_000;
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -47,6 +60,7 @@ export async function politeFetch(
   const minDelayMs = opts.minDelayMs ?? defaultCrawlDelayMs();
   const retries = opts.retries ?? 1;
   const fetchImpl = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? defaultFetchTimeoutMs();
 
   const prev = hostQueues.get(host) ?? Promise.resolve();
   const task = prev
@@ -61,7 +75,10 @@ export async function politeFetch(
         if (wait > 0) await sleep(wait);
         hostLastRequestAt.set(host, Date.now());
 
-        const res = await fetchImpl(url, { ...init, headers });
+        // fresh signal per attempt — the timer must start at the request, not
+        // while this url waits in the per-host politeness queue
+        const signal = init?.signal ?? AbortSignal.timeout(timeoutMs);
+        const res = await fetchImpl(url, { ...init, headers, signal });
         const retryable = res.status === 429 || res.status >= 500;
         if (!retryable || attempt >= retries) return res;
         attempt += 1;
