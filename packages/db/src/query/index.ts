@@ -15,3 +15,4 @@ export * from './analytics';
 export * from './verification';
 export * from './ai-cache';
 export * from './embeddings';
+export * from './fit-check';

@@ -405,3 +405,23 @@ export const extractionCorrections = sqliteTable('extraction_corrections', {
   previousJson: text('previous_json').notNull(),
   correctedAt: integer('corrected_at').notNull(),
 });
+
+/**
+ * Paste-a-dress-link page-parse cache (additive, 2026-07-13 fit-check).
+ * One row per pasted URL: result_json holds the ParsedExternalPage (plus the
+ * extraction attributes when one ran) so a repeat paste costs zero fetches
+ * and zero AI spend. Successful parses live ~24h; fetch failures are cached
+ * as short-TTL NEGATIVE entries (~5min) so a flaky store isn't hammered.
+ * Never a listings row — pasted products are ephemeral by design.
+ */
+export const fitCheckCache = sqliteTable('fit_check_cache', {
+  /** sha256(normalized url) */
+  urlHash: text('url_hash').primaryKey(),
+  /** the pasted URL (post-normalization), for admin/debugging */
+  url: text('url').notNull(),
+  /** cached parse payload (CachedFitCheckPage JSON) */
+  resultJson: text('result_json').notNull(),
+  createdAt: integer('created_at').notNull(),
+  /** ~24h TTL (~5min for negative entries); expired rows deleted lazily on read */
+  expiresAt: integer('expires_at').notNull(),
+});

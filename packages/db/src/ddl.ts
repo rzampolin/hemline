@@ -189,6 +189,13 @@ const STATEMENTS = [
     previous_json TEXT NOT NULL,
     corrected_at  INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS fit_check_cache (
+    url_hash    TEXT PRIMARY KEY,
+    url         TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    expires_at  INTEGER NOT NULL
+  )`,
 ];
 
 /**
