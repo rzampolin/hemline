@@ -21,6 +21,7 @@ import {
 import { getDb } from '../lib/db';
 import { fail, ok, serverError, zodFail } from '../lib/envelope';
 import { toRankedListings } from '../lib/matching';
+import { checkRateLimit } from '../lib/rate-limit';
 import { requireUserId } from '../lib/session';
 
 export const runtime = 'nodejs';
@@ -66,6 +67,10 @@ export async function POST(req: Request) {
     const db = getDb();
     const userId = requireUserId(req, db);
     if (!userId) return fail('no_session', 'No session — call GET /api/session first', 401);
+    // DB-write abuse guard (each POST inserts a saved row).
+    if (!checkRateLimit('saves', userId, 120)) {
+      return fail('rate_limited', 'Too many saves — slow down for a minute', 429);
+    }
     let body: unknown;
     try {
       body = await req.json();

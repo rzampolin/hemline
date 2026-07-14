@@ -13,7 +13,8 @@ import { ClickoutPostSchema } from '@hemline/contracts';
 import { enqueueVerification, recordClickout, userExists } from '@hemline/db';
 import { getDb } from '../lib/db';
 import { fail, ok, serverError, zodFail } from '../lib/envelope';
-import { resolveUserId } from '../lib/session';
+import { checkRateLimit } from '../lib/rate-limit';
+import { rateLimitKey, resolveUserId } from '../lib/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,6 +22,12 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
   try {
     const db = getDb();
+    // Guest-tolerant write endpoint (DB-bloat abuse guard) — per-user or per-IP.
+    // Silently drop excess (204-equivalent ok) so a spam loop can't grow the
+    // clickouts table without bound; a normal user clicks far under this.
+    if (!checkRateLimit('clickouts', rateLimitKey(req), 60)) {
+      return ok({ recorded: false });
+    }
     let body: unknown;
     try {
       // sendBeacon may ship text/plain — Request.json() parses regardless.

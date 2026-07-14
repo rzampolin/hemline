@@ -102,6 +102,42 @@ export function requireUserId(req: Request, db: Db): string | null {
   return id;
 }
 
+/**
+ * Best-effort client IP for per-IP rate limiting of GUESTS (no session yet).
+ *
+ * Trust model on Fly.io: the edge proxy sets `Fly-Client-IP` to the real client
+ * address — a value the client CANNOT forge, because Fly overwrites it at the
+ * edge. `X-Forwarded-For` is different: a client may send its own XFF and Fly
+ * *appends* the real hop, so the LEFTMOST entries are attacker-controlled and
+ * only the RIGHTMOST (the hop added by the trusted proxy) is meaningful. We
+ * therefore prefer Fly-Client-IP, then fall back to the rightmost XFF entry,
+ * then x-real-ip. A naive `xff.split(',')[0]` would trust a spoofable value and
+ * let one abuser masquerade as unlimited distinct IPs — do not do that.
+ */
+export function clientIp(req: Request): string {
+  const fly = req.headers.get('fly-client-ip');
+  if (fly?.trim()) return fly.trim();
+  const xff = req.headers.get('x-forwarded-for');
+  if (xff) {
+    const parts = xff
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (parts.length > 0) return parts[parts.length - 1]; // rightmost = trusted hop
+  }
+  const real = req.headers.get('x-real-ip');
+  if (real?.trim()) return real.trim();
+  return 'unknown';
+}
+
+/**
+ * Rate-limit key for a request: the session user when present, else `ip:<addr>`
+ * so guests are throttled PER-IP rather than sharing one global guest bucket.
+ */
+export function rateLimitKey(req: Request): string {
+  return resolveUserId(req) ?? `ip:${clientIp(req)}`;
+}
+
 export function attachSessionCookie(res: NextResponse, userId: string): void {
   res.cookies.set(SESSION_COOKIE, signUserId(userId), {
     httpOnly: true,

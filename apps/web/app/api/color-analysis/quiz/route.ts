@@ -12,6 +12,7 @@ import { classifyFromQuiz } from '@hemline/ai';
 import { setColorSeason } from '@hemline/db';
 import { getDb } from '../../lib/db';
 import { fail, ok, serverError, zodFail } from '../../lib/envelope';
+import { checkRateLimit } from '../../lib/rate-limit';
 import { requireUserId } from '../../lib/session';
 
 export const runtime = 'nodejs';
@@ -22,6 +23,11 @@ export async function POST(req: Request) {
     const db = getDb();
     const userId = requireUserId(req, db);
     if (!userId) return fail('no_session', 'No session — call GET /api/session first', 401);
+    // Deterministic (no LLM), but writes to the profile — modest per-user cap
+    // for consistency with the other analysis routes and abuse hardening.
+    if (!checkRateLimit('color-analysis-quiz', userId, 20)) {
+      return fail('rate_limited', 'Too many quiz submissions — try again in a minute', 429);
+    }
     let body: unknown;
     try {
       body = await req.json();

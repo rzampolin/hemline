@@ -22,6 +22,30 @@ const nextConfig: NextConfig = {
   ],
   // Native modules — must stay external to the server bundle.
   serverExternalPackages: ['better-sqlite3', 'sharp'],
+  // Baseline security headers on every response (2026-07-14 security audit).
+  // Conservative set that cannot break the app: clickjacking (frame-ancestors
+  // + X-Frame-Options), MIME sniffing, referrer leakage, feature access, and
+  // HSTS (the app is HTTPS-only behind Fly). A full script/style CSP is
+  // deliberately NOT added here — Next's inline runtime needs nonces/hashes to
+  // avoid breakage; that is tracked as a follow-up in docs/SECURITY_REVIEW.md.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'geolocation=(), microphone=(), camera=()' },
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=31536000; includeSubDomains',
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

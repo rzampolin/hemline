@@ -7,6 +7,7 @@ import { SwipesPostSchema, type SwipesPostResponse } from '@hemline/contracts';
 import { attributeVectorsFor, getUserProfile, recordSwipes, setStyleTags } from '@hemline/db';
 import { getDb } from '../lib/db';
 import { fail, ok, serverError, zodFail } from '../lib/envelope';
+import { checkRateLimit } from '../lib/rate-limit';
 import { requireUserId } from '../lib/session';
 import { applySwipesToStyleTags } from '../lib/style-learning';
 
@@ -18,6 +19,10 @@ export async function POST(req: Request) {
     const db = getDb();
     const userId = requireUserId(req, db);
     if (!userId) return fail('no_session', 'No session — call GET /api/session first', 401);
+    // DB-write abuse guard (each POST records events + recomputes style tags).
+    if (!checkRateLimit('swipes', userId, 120)) {
+      return fail('rate_limited', 'Too many swipes — slow down for a minute', 429);
+    }
     let body: unknown;
     try {
       body = await req.json();

@@ -20,9 +20,10 @@ import {
 } from '@hemline/contracts';
 import { getUserProfile } from '@hemline/db';
 import { getDb } from '../lib/db';
-import { ok, serverError, zodFail } from '../lib/envelope';
+import { fail, ok, serverError, zodFail } from '../lib/envelope';
 import { expandSourceFilter, rankForUser } from '../lib/matching';
-import { resolveUserId } from '../lib/session';
+import { checkRateLimit } from '../lib/rate-limit';
+import { rateLimitKey, resolveUserId } from '../lib/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -83,6 +84,22 @@ export async function GET(req: Request) {
     const parsed = SearchParamsSchema.safeParse(Object.fromEntries(url.searchParams));
     if (!parsed.success) return zodFail(parsed.error);
     const p = parsed.data;
+
+    // Rate limiting (prod-only; RATE_LIMIT_FORCE=1 for tests). Keyed by the
+    // session user, or per-IP for guests (rateLimitKey) — guests must NOT share
+    // one global bucket. Two tiers:
+    //   • generous cap on the deterministic keyword/filter fast path (DB abuse
+    //     guard — search is high-traffic and cheap when there's no free-text);
+    //   • a TIGHTER bucket for any request carrying a free-text `q`, since that
+    //     is the only path that can trigger stage-3 Haiku query-parse + the
+    //     query-embedding spend (apps/web/app/api/lib/search.ts).
+    const rlKey = rateLimitKey(req);
+    if (!checkRateLimit('search', rlKey, 60)) {
+      return fail('rate_limited', 'Too many searches — try again in a minute', 429);
+    }
+    if (p.q?.trim() && !checkRateLimit('search-query', rlKey, 15)) {
+      return fail('rate_limited', 'Too many text searches — try again in a minute', 429);
+    }
 
     const userId = resolveUserId(req);
     const profile = (userId ? getUserProfile(db, userId) : null) ?? GUEST_PROFILE;
